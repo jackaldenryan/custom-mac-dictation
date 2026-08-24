@@ -69,9 +69,13 @@ security list-keychains -d user -s "$keychain_name" login.keychain-db
 security import "$p12" -k "$keychain_name" -P "$p12_pass" -T /usr/bin/codesign -T /usr/bin/security -A >/dev/null 2>&1 || true
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_pass" "$keychain_name" >/dev/null
 
-cert_tmp="$(mktemp)"
-/usr/bin/openssl pkcs12 -in "$p12" -clcerts -nokeys -passin "pass:$p12_pass" -out "$cert_tmp" >/dev/null 2>&1
-security add-trusted-cert -d -r trustRoot -p codeSign -k "$keychain_name" "$cert_tmp" >/dev/null 2>&1 || true
-rm -f "$cert_tmp"
+if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
+  if ! security find-identity -v -p codesigning | grep -q "$identity"; then
+    cert_tmp="$(mktemp)"
+    /usr/bin/openssl pkcs12 -in "$p12" -clcerts -nokeys -passin "pass:$p12_pass" -out "$cert_tmp" >/dev/null 2>&1
+    security add-trusted-cert -d -r trustRoot -p codeSign -k "$keychain_name" "$cert_tmp" >/dev/null 2>&1 || true
+    rm -f "$cert_tmp"
+  fi
+fi
 
 echo "$identity"

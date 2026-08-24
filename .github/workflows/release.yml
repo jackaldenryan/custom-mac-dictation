@@ -33,6 +33,11 @@ jobs:
           echo "$CODESIGN_P12" | base64 -d > "$support/CustomDictationSigning.p12"
           printf '%s' "$CODESIGN_P12_PASSWORD" > "$support/p12-password"
           chmod 600 "$support/CustomDictationSigning.p12" "$support/p12-password"
+          /usr/bin/openssl pkcs12 -in "$support/CustomDictationSigning.p12" -clcerts -nokeys \
+            -passin "file:$support/p12-password" -out /tmp/custom-dictation-signing.pem
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain /tmp/custom-dictation-signing.pem
+          rm -f /tmp/custom-dictation-signing.pem
 
       - name: Build app
         run: ./scripts/package-app.sh
