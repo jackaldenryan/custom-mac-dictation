@@ -77,9 +77,8 @@ public enum UpdateChecker {
         set -euo pipefail
         pid=\(ProcessInfo.processInfo.processIdentifier)
         while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
-        rm -rf "\(currentApp.path)"
         /usr/bin/ditto "\(newApp.path)" "\(currentApp.path)"
-        /usr/bin/xattr -cr "\(currentApp.path)" || true
+        /usr/bin/xattr -dr com.apple.quarantine "\(currentApp.path)" || true
         /usr/bin/open "\(currentApp.path)"
         """
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)

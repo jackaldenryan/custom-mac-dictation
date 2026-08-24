@@ -9,3 +9,6 @@ DerivedData/
 *.zip
 *.dmg
 .app-build/
+*.p12
+*.pem
+*.key

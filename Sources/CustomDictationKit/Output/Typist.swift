@@ -32,23 +32,32 @@ public enum Typist {
         let source = CGEventSource(stateID: .privateState)
         source?.localEventsSuppressionInterval = 0
         postModifiers(source: source, flags: flags, keyDown: true)
-
-        let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        down?.flags = flags
-        up?.flags = flags
-        if flags.isEmpty, let character, var buffer = Optional(Array(character.utf16)) {
-            down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
-            up?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
-        }
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
-
+        pressKey(keyCode, flags: flags, source: source, character: flags.isEmpty ? character : nil)
         postModifiers(source: source, flags: flags, keyDown: false)
         if flags.contains(.maskShift) {
             clearUnintendedCapsLock()
         }
         DiagnosticLog.line("Pressed key \(keyCode) flags=\(flags.rawValue) into \(frontAppName())")
+    }
+
+    public static func deleteSelection() {
+        pressKey(51, flags: [])
+    }
+
+    public static func moveRight() {
+        pressKey(124, flags: [])
+    }
+
+    public static func selectLeft(characters: Int) {
+        guard characters > 0 else { return }
+        if !AXIsProcessTrusted() { return }
+        let source = CGEventSource(stateID: .privateState)
+        source?.localEventsSuppressionInterval = 0
+        postModifiers(source: source, flags: .maskShift, keyDown: true)
+        for _ in 0..<characters {
+            pressKey(123, flags: .maskShift, source: source)
+        }
+        postModifiers(source: source, flags: .maskShift, keyDown: false)
     }
 
     public static func pressShortcut(keyCode: Int, modifierFlags: UInt64) {
@@ -73,6 +82,25 @@ public enum Typist {
         (.maskShift, 56),
         (.maskSecondaryFn, 63),
     ]
+
+    private static func pressKey(
+        _ keyCode: UInt16,
+        flags: CGEventFlags,
+        source: CGEventSource? = nil,
+        character: String? = nil
+    ) {
+        let eventSource = source ?? CGEventSource(stateID: .privateState)
+        let down = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true)
+        let up = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false)
+        down?.flags = flags
+        up?.flags = flags
+        if let character, var buffer = Optional(Array(character.utf16)) {
+            down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
+            up?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
+        }
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
 
     private static func postModifiers(source: CGEventSource?, flags: CGEventFlags, keyDown: Bool) {
         let keys = keyDown ? modifierKeys : modifierKeys.reversed()

@@ -30,7 +30,7 @@ public final class ListeningSession: ObservableObject {
         }
         engine.onPartialTranscript = { [weak self] text in
             Task { @MainActor in
-                self?.lastPartial = text
+                self?.handlePartial(text)
             }
         }
         engine.onError = { [weak self] error in
@@ -72,6 +72,7 @@ public final class ListeningSession: ObservableObject {
 
     public func suspend() {
         guard state == .listening else { return }
+        LivePhrase.keepAndUnhighlight()
         setState(.suspended)
         DiagnosticLog.line("Suspended")
     }
@@ -84,9 +85,19 @@ public final class ListeningSession: ObservableObject {
 
     public func stopCompletely() async {
         startGeneration += 1
+        LivePhrase.keepAndUnhighlight()
         await engine.stop()
         setState(.off)
         DiagnosticLog.line("Stopped")
+    }
+
+    private func handlePartial(_ text: String) {
+        lastPartial = text
+        guard state == .listening else { return }
+        if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
+            return
+        }
+        LivePhrase.show(DictationSpacing.preview(text))
     }
 
     private func handle(transcript: String) {

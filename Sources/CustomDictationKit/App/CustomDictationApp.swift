@@ -21,7 +21,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var session = ListeningSession(store: store)
     private let sleepObserver = SleepObserver()
     private let onboarding = OnboardingController()
-    private let settingsWindow = SettingsController()
     private let mainWindow = MainWindowController()
     private let updater = UpdateController()
     private var statusItem: StatusItemController?
@@ -63,17 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func presentMainInterface() {
         presentStatusItem()
-        mainWindow.show(session: session) { [weak self] in
-            guard let self else { return }
-            self.settingsWindow.show(session: self.session, store: self.store, updater: self.updater)
-        }
+        mainWindow.show(session: session, store: store, updater: updater)
     }
 
     private func presentStatusItem() {
         guard statusItem == nil else { return }
         statusItem = StatusItemController(session: session) { [weak self] in
             guard let self else { return }
-            self.settingsWindow.show(session: self.session, store: self.store, updater: self.updater)
+            self.mainWindow.show(session: self.session, store: self.store, updater: self.updater)
         }
     }
 }

@@ -160,9 +160,9 @@ public final class SpeechEngine: @unchecked Sendable {
 
         finalizeTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(400))
+                try? await Task.sleep(for: .milliseconds(200))
                 guard let self, self.pendingFinalize else { continue }
-                if Date().timeIntervalSince(self.lastVolatileAt) >= 0.75 {
+                if Date().timeIntervalSince(self.lastVolatileAt) >= 0.4 {
                     await self.finalizeThroughLatest()
                 }
             }

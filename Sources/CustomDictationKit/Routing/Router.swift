@@ -20,6 +20,7 @@ public enum Router {
         guard !normalized.isEmpty else { return .ignored }
 
         if normalized == "start listening mac" {
+            LivePhrase.discard()
             if state == .suspended { onStartListening() }
             return .handled
         }
@@ -27,6 +28,7 @@ public enum Router {
             return .ignored
         }
         if normalized == "stop listening mac" {
+            LivePhrase.keepAndUnhighlight()
             onStopListening()
             return .handled
         }
@@ -35,14 +37,17 @@ public enum Router {
         }
 
         if let imported = matchImported(normalized: normalized, settings: settings) {
+            LivePhrase.discard()
             return runImported(imported)
         }
         if let key = KeyPressGrammar.parse(normalized) {
+            LivePhrase.discard()
             Typist.press(keyCode: key.keyCode, flags: key.flags, character: key.character)
             DictationSpacing.noteKeyPress(keyCode: key.keyCode)
             return .handled
         }
         if let punctuation = PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) {
+            LivePhrase.discard()
             switch punctuation {
             case .typeCharacter(let character):
                 Typist.typeText(DictationSpacing.punctuationToType(character))
@@ -52,6 +57,7 @@ public enum Router {
             return .handled
         }
         if normalized.hasPrefix("open ") {
+            LivePhrase.discard()
             let name = String(normalized.dropFirst(5))
             do {
                 try AppController.open(spokenName: name)
@@ -63,6 +69,7 @@ public enum Router {
             }
         }
         if normalized.hasPrefix("quit ") {
+            LivePhrase.discard()
             let name = String(normalized.dropFirst(5))
             do {
                 try AppController.quit(spokenName: name)
@@ -74,18 +81,47 @@ public enum Router {
             }
         }
         if normalized == "capitalize that" {
+            LivePhrase.discard()
             return transform(.capitalize)
         }
         if normalized == "uppercase that" {
+            LivePhrase.discard()
             return transform(.uppercase)
         }
         if normalized == "lowercase that" {
+            LivePhrase.discard()
             return transform(.lowercase)
         }
 
         let typed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        Typist.typeText(DictationSpacing.textToType(typed))
+        LivePhrase.commit(DictationSpacing.textToType(typed))
         return .typed
+    }
+
+    public static func shouldHoldLive(transcript: String, state: ListeningState, settings: AppSettings) -> Bool {
+        if state != .listening { return true }
+        let normalized = TranscriptNormalizer.normalize(transcript)
+        guard !normalized.isEmpty else { return true }
+        if normalized.hasPrefix("start listening") || normalized.hasPrefix("stop listening") { return true }
+        if normalized == "press" || normalized.hasPrefix("press ") { return true }
+        if normalized == "open" || normalized.hasPrefix("open ") { return true }
+        if normalized == "quit" || normalized.hasPrefix("quit ") { return true }
+        if normalized.hasPrefix("capitalize") || normalized.hasPrefix("uppercase") || normalized.hasPrefix("lowercase") {
+            return true
+        }
+        if PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) != nil {
+            return true
+        }
+        if matchImported(normalized: normalized, settings: settings) != nil {
+            return true
+        }
+        return settings.commands.contains { command in
+            guard command.enabled else { return false }
+            return command.phrases.contains { phrase in
+                let name = TranscriptNormalizer.normalize(phrase)
+                return name.hasPrefix(normalized) && normalized.count >= 3
+            }
+        }
     }
 
     private static func transform(_ kind: SelectionTransform.Kind) -> RouteResult {

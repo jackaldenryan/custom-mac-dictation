@@ -22,8 +22,14 @@ sed "s/VERSION_PLACEHOLDER/$version/g" "$root/Resources/Info.plist" > "$app/Cont
 cp "$bin" "$app/Contents/MacOS/$binary_name"
 chmod +x "$app/Contents/MacOS/$binary_name"
 
-if command -v codesign >/dev/null; then
-  codesign --force --deep --sign - "$app" >/dev/null
+identity="${CODESIGN_IDENTITY:-}"
+if [[ -z "$identity" ]]; then
+  identity="$("$root/scripts/ensure-signing-identity.sh")"
+fi
+if [[ -n "$identity" ]]; then
+  codesign --force --deep --sign "$identity" --identifier com.jackaldenryan.custom-mac-dictation "$app"
+else
+  codesign --force --deep --sign - --identifier com.jackaldenryan.custom-mac-dictation "$app"
 fi
 
 ditto -c -k --keepParent "$app" "$dist/CustomDictation-$version.zip"

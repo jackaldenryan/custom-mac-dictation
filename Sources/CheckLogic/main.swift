@@ -37,6 +37,14 @@ if let chrome = AppNameResolver.resolve("chrome") {
     expect(chrome.name.lowercased().contains("chrome"), "chrome from installed apps")
 }
 
+expect(Router.shouldHoldLive(transcript: "press return", state: .listening, settings: .default), "hold press")
+expect(!Router.shouldHoldLive(transcript: "hello there", state: .listening, settings: .default), "live hello")
+expect(Router.shouldHoldLive(transcript: "open parentheses", state: .listening, settings: .default), "hold punctuation")
+
+DictationSpacing.reset()
+expect(DictationSpacing.preview("a") == "a", "preview first")
+_ = DictationSpacing.textToType("a")
+expect(DictationSpacing.preview("b") == " b", "preview lead space")
 DictationSpacing.reset()
 expect(DictationSpacing.textToType("a") == "a", "first phrase no lead space")
 expect(DictationSpacing.textToType("b") == " b", "second phrase lead space")

@@ -43,7 +43,7 @@ public final class StatusItemController: NSObject {
         }
 
         menu.addItem(.separator())
-        menu.addItem(actionItem("Settings…", #selector(openSettings)))
+        menu.addItem(actionItem("Show Window", #selector(openSettings)))
         menu.addItem(actionItem("Quit Custom Dictation", #selector(quit)))
         item.menu = menu
     }

@@ -12,8 +12,7 @@ if pgrep -x CustomDictation >/dev/null 2>&1; then
   sleep 0.4
 fi
 
-rm -rf "$app_dst"
 ditto "$app_src" "$app_dst"
-xattr -cr "$app_dst" || true
+xattr -dr com.apple.quarantine "$app_dst" || true
 open "$app_dst"
 echo "Installed and launched $app_dst"

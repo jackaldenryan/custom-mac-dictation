@@ -11,15 +11,24 @@ public enum DictationSpacing {
         pendingLeadingSpace = false
     }
 
-    public static func textToType(_ raw: String) -> String {
+    public static func preview(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
-        var out = trimmed
-        if pendingLeadingSpace && !suppressesLeadingSpace(out) {
-            out = " " + out
+        if pendingLeadingSpace && !suppressesLeadingSpace(trimmed) {
+            return " " + trimmed
         }
+        return trimmed
+    }
+
+    public static func textToType(_ raw: String) -> String {
+        let out = preview(raw)
+        guard !out.isEmpty else { return "" }
         pendingLeadingSpace = needsSpaceAfter(out)
         return out
+    }
+
+    public static func markCommitted(_ text: String) {
+        pendingLeadingSpace = needsSpaceAfter(text)
     }
 
     public static func punctuationToType(_ character: String) -> String {
