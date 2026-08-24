@@ -1,6 +1,6 @@
 # Custom Dictation
 
-Download the Mac app from [Releases](https://github.com/jackaldenryan/custom-mac-dictation/releases/latest), drag it into Applications, and open it. It is an always-on menu bar dictation app. It types into the focused app and runs voice commands, using Apple’s on-device dictation engine. Audio stays on this Mac.
+Download the Mac app from [Releases](https://github.com/jackaldenryan/custom-mac-dictation/releases/latest), drag it into Applications, and open it. It lives in the Dock and types into the focused app when you speak. It uses Apple’s on-device dictation engine. Audio stays on this Mac.
 
 ## Install
 
@@ -27,9 +27,10 @@ Keep Voice Control off while this app is listening. They should not both run.
 2. Grant **Speech Recognition** if macOS asks.
 3. Turn on **Custom Dictation** in System Settings → Privacy & Security → Accessibility, then continue in the setup window.
 4. Wait if it downloads Apple speech models.
-5. Import Voice Control when asked, so your existing vocabulary and custom commands come along.
-6. Pick the USB headset, not the built-in mic.
-7. Finish. The menu bar mic should show that it is listening.
+5. Pick the USB headset, not the built-in mic.
+6. Finish. The main window and Dock icon should show that it is listening.
+
+Voice Control import is optional and lives in Settings. Skip it until basic dictation works.
 
 ## What to try after it is installed
 
@@ -45,7 +46,7 @@ Open TextEdit, click in the window, and speak.
 - Say **comma**. It should type `,`.
 - Say **the word comma**. It should type the word.
 
-Put the Mac to sleep. After it wakes, listening stays off until you open the menu bar icon and choose **Start Listening**. A head-pointer click on that menu is the intended path.
+Put the Mac to sleep. After it wakes, listening stays off until you click **Start Listening** in the app window or Dock.
 
 With Cursor holding a long agent conversation, dictate into TextEdit. It should feel no slower than with Cursor closed.
 

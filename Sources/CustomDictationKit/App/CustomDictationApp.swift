@@ -8,7 +8,7 @@ public enum CustomDictationApp {
         let delegate = AppDelegate()
         AppDelegate.retained = delegate
         app.delegate = delegate
-        app.setActivationPolicy(.accessory)
+        app.setActivationPolicy(.regular)
         app.run()
     }
 }
@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let sleepObserver = SleepObserver()
     private let onboarding = OnboardingController()
     private let settingsWindow = SettingsController()
+    private let mainWindow = MainWindowController()
     private let updater = UpdateController()
     private var statusItem: StatusItemController?
 
@@ -32,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sleepObserver.start()
 
         if store.settings.hasCompletedOnboarding {
-            presentStatusItem()
+            presentMainInterface()
             if store.settings.launchAtLogin {
                 try? SMAppService.mainApp.register()
             }
@@ -42,13 +43,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             onboarding.show(session: session, store: store) { [weak self] in
-                self?.presentStatusItem()
+                self?.presentMainInterface()
                 Task { await self?.session.startListening() }
             }
         }
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if store.settings.hasCompletedOnboarding {
+            presentMainInterface()
+        }
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    private func presentMainInterface() {
+        presentStatusItem()
+        mainWindow.show(session: session) { [weak self] in
+            guard let self else { return }
+            self.settingsWindow.show(session: self.session, store: self.store, updater: self.updater)
+        }
+    }
+
     private func presentStatusItem() {
+        guard statusItem == nil else { return }
         statusItem = StatusItemController(session: session) { [weak self] in
             guard let self else { return }
             self.settingsWindow.show(session: self.session, store: self.store, updater: self.updater)

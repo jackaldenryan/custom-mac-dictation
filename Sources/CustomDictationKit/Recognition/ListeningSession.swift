@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 public enum ListeningState: String, Sendable {
@@ -7,8 +8,8 @@ public enum ListeningState: String, Sendable {
 }
 
 @MainActor
-public final class ListeningSession {
-    public private(set) var state: ListeningState = .off
+public final class ListeningSession: ObservableObject {
+    @Published public private(set) var state: ListeningState = .off
     public var onStateChange: ((ListeningState) -> Void)?
     public var onErrorMessage: ((String) -> Void)?
 

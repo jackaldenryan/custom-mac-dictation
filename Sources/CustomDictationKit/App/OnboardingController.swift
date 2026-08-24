@@ -31,7 +31,6 @@ private struct OnboardingView: View {
         case speech
         case accessibility
         case assets
-        case importVoiceControl
         case micPicker
         case done
     }
@@ -45,7 +44,6 @@ private struct OnboardingView: View {
     @State private var assetProgress: Double = 0
     @State private var mics: [MicrophoneDevice] = []
     @State private var selectedUID: String?
-    @State private var importSummary = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -67,9 +65,6 @@ private struct OnboardingView: View {
                         Text(mic.name).tag(Optional(mic.uid))
                     }
                 }
-            }
-            if step == .importVoiceControl, !importSummary.isEmpty {
-                Text(importSummary)
             }
             Spacer()
             HStack {
@@ -93,7 +88,6 @@ private struct OnboardingView: View {
         case .speech: return "On-device speech recognition"
         case .accessibility: return "Accessibility access"
         case .assets: return "Download speech models"
-        case .importVoiceControl: return "Import Voice Control"
         case .micPicker: return "Choose your microphone"
         case .done: return "Ready"
         }
@@ -111,12 +105,10 @@ private struct OnboardingView: View {
             return "Accessibility is required so the app can type and press keys in other apps. It does not read other apps’ interface trees."
         case .assets:
             return "The first launch downloads Apple’s on-device speech models if they are not already installed."
-        case .importVoiceControl:
-            return "Import your existing Voice Control vocabulary and custom commands in one step. You can skip this and import later from Settings."
         case .micPicker:
             return "Pick the USB headset you actually use. You can change this later."
         case .done:
-            return "Listening will start after you finish. Use the menu bar icon to turn it off. After the Mac sleeps, turn it back on from that icon."
+            return "Listening will start after you finish. Use this window or the Dock icon to turn it off. After the Mac sleeps, turn it back on from the window or Dock."
         }
     }
 
@@ -127,7 +119,6 @@ private struct OnboardingView: View {
         case .speech: return "Allow speech recognition"
         case .accessibility: return "Open Accessibility settings"
         case .assets: return "Download models"
-        case .importVoiceControl: return "Import now"
         case .micPicker: return "Save microphone"
         case .done: return "Start listening"
         }
@@ -167,22 +158,10 @@ private struct OnboardingView: View {
             status = "Downloading…"
             do {
                 try await session.ensureAssets()
-                step = .importVoiceControl
+                step = .micPicker
             } catch {
                 status = error.localizedDescription
             }
-        case .importVoiceControl:
-            do {
-                let result = try VoiceControlImporter.importFromThisMac()
-                _ = store.update {
-                    $0.vocabulary = result.vocabulary
-                    $0.commands = result.commands
-                }
-                importSummary = "Imported \(result.vocabulary.count) vocabulary entries and \(result.commands.count) commands."
-            } catch {
-                importSummary = "Import failed: \(error.localizedDescription). You can try again later."
-            }
-            step = .micPicker
         case .micPicker:
             _ = store.update { $0.microphoneUID = selectedUID }
             step = .done
