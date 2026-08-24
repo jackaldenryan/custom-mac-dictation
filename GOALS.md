@@ -58,8 +58,6 @@ Existing phrasing habits must keep working. Relearning how to say a key press is
 
 Saying "open ⟨app⟩" launches or focuses an application by spoken name, and "quit ⟨app⟩" quits it. Spoken names must resolve loosely enough to be practical, since applications are rarely called by their exact bundle names out loud.
 
-Certain applications must never be quit by voice, and that list must be editable. Zoom and Terminal start on it.
-
 ### Case transforms on the selection
 
 Saying "capitalize that" capitalizes the current selection, "uppercase that" makes it fully uppercase, and "lowercase that" makes it fully lowercase.

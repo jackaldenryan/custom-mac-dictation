@@ -68,14 +68,6 @@ public enum AppNameResolver {
         }?.0
     }
 
-    public static func matchesNeverQuit(app: ResolvedApp, neverQuitNames: [String]) -> Bool {
-        let hay = tokens(app.name) + tokens(app.bundleIdentifier ?? "") + tokens(app.url.deletingPathExtension().lastPathComponent)
-        return neverQuitNames.contains { name in
-            let needle = tokens(name)
-            return !needle.isEmpty && needle.allSatisfy { hay.contains($0) }
-        }
-    }
-
     private static func tokens(_ text: String) -> [String] {
         text.lowercased()
             .replacingOccurrences(of: ".app", with: "")

@@ -1,22 +1,34 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
 public enum Typist {
     public static func typeText(_ text: String) {
         guard !text.isEmpty else { return }
-        let source = CGEventSource(stateID: .hidSystemState)
-        var buffer = Array(text.utf16)
-        let length = buffer.count
-        let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-        down?.keyboardSetUnicodeString(stringLength: length, unicodeString: &buffer)
-        up?.keyboardSetUnicodeString(stringLength: length, unicodeString: &buffer)
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        if !AXIsProcessTrusted() {
+            DiagnosticLog.line("Type skipped; Accessibility not granted")
+            return
+        }
+        let units = Array(text.utf16)
+        let chunkSize = 20
+        var index = 0
+        var posted = 0
+        while index < units.count {
+            let end = min(index + chunkSize, units.count)
+            var chunk = Array(units[index..<end])
+            postUnicode(&chunk)
+            posted += chunk.count
+            index = end
+        }
+        DiagnosticLog.line("Typed \(posted) utf16 into \(frontAppName())")
     }
 
     public static func press(keyCode: UInt16, flags: CGEventFlags, character: String? = nil) {
+        if !AXIsProcessTrusted() {
+            DiagnosticLog.line("Key skipped; Accessibility not granted")
+            return
+        }
         let source = CGEventSource(stateID: .hidSystemState)
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
@@ -28,6 +40,7 @@ public enum Typist {
         }
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
+        DiagnosticLog.line("Pressed key \(keyCode) flags=\(flags.rawValue) into \(frontAppName())")
     }
 
     public static func pressShortcut(keyCode: Int, modifierFlags: UInt64) {
@@ -44,5 +57,19 @@ public enum Typist {
         if ns.contains(.function) { flags.insert(.maskSecondaryFn) }
         if ns.contains(.capsLock) { flags.insert(.maskAlphaShift) }
         return flags
+    }
+
+    private static func postUnicode(_ buffer: inout [UniChar]) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+        down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
+        up?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
+    private static func frontAppName() -> String {
+        NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
     }
 }

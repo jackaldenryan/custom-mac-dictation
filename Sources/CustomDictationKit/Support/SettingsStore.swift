@@ -65,19 +65,15 @@ public struct ImportedCommand: Codable, Equatable, Sendable, Identifiable {
 public struct AppSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
     public var microphoneUID: String?
-    public var neverQuitNames: [String]
     public var vocabulary: [VocabEntry]
     public var commands: [ImportedCommand]
     public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
 
-    public static let defaultNeverQuit = ["Zoom", "Terminal"]
-
     public static var `default`: AppSettings {
         AppSettings(
             hasCompletedOnboarding: false,
             microphoneUID: nil,
-            neverQuitNames: defaultNeverQuit,
             vocabulary: [],
             commands: [],
             punctuationModes: [:],

@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DiagnosticLog.line("Launch version \(AppVersion.current) ax=\(Permissions.accessibilityGranted(prompt: false))")
         sleepObserver.onWillSleep = { [weak self] in
             Task { await self?.session.stopCompletely() }
         }

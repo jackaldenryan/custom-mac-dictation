@@ -41,7 +41,6 @@ Open TextEdit, click in the window, and speak.
 - Say **start listening Mac**. Dictation should resume.
 - Say **press return**. That should press Return.
 - Say **open Safari**, then **quit Safari**.
-- Say **quit Terminal**. It should refuse. Same for Zoom.
 - Select a word, say **uppercase that**. If nothing is selected, it should say so.
 - Say **comma**. It should type `,`.
 - Say **the word comma**. It should type the word.
@@ -58,7 +57,7 @@ The menu bar icon is the daily UI.
 - Pause: suspended by voice
 - Slashed mic: off
 
-**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, the never-quit list, Voice Control import and export, punctuation defaults, and **Check for updates**.
+**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, Voice Control import and export, punctuation defaults, and **Check for updates**.
 
 ## Updates
 

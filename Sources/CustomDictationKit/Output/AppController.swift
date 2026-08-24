@@ -3,7 +3,6 @@ import Foundation
 
 public enum AppControlError: Error {
     case notFound
-    case protected
 }
 
 public enum AppController {
@@ -16,11 +15,8 @@ public enum AppController {
         }
     }
 
-    public static func quit(spokenName: String, neverQuitNames: [String]) throws {
+    public static func quit(spokenName: String) throws {
         guard let app = AppNameResolver.resolve(spokenName) else { throw AppControlError.notFound }
-        if AppNameResolver.matchesNeverQuit(app: app, neverQuitNames: neverQuitNames) {
-            throw AppControlError.protected
-        }
         if let running = app.running {
             running.terminate()
         } else {

@@ -119,7 +119,7 @@ Match Voice Control phrasing exactly. The parser is a small recursive descent ov
 
 Silently editing the wrong text is worse than refusing.
 
-**App control:** `NSWorkspace` to launch or activate. `NSRunningApplication.terminate()` to quit. Resolve spoken names against localized names, bundle names, and `/Applications` with token overlap, not exact bundle IDs. Maintain an editable never-quit list. Ship it with Zoom and Terminal.
+**App control:** `NSWorkspace` to launch or activate. `NSRunningApplication.terminate()` to quit. Resolve spoken names against localized names, bundle names, and `/Applications` with token overlap, not exact bundle IDs.
 
 ## Vocabulary and custom commands
 
@@ -163,7 +163,7 @@ v4 (priority 4 in the goals): use surrounding typed context to pick character vs
 
 ## Menu bar and first run
 
-The status item is the whole daily UI. Icon states: Off, Suspended, Listening, Needs permission, Error. Clicking the item toggles Off ↔ Listening. The menu also has Suspend, microphone, import/export, never-quit list, and Quit.
+The status item is the whole daily UI. Icon states: Off, Suspended, Listening, Needs permission, Error. Clicking the item toggles Off ↔ Listening. The menu also has Suspend, microphone, import/export, and Quit.
 
 After Mac sleep, a head-pointer click on that item is the intended resume path. The status item must stay a normal `NSStatusItem` so Head Pointer can hit it.
 
@@ -185,7 +185,7 @@ No terminal steps. Later distribution is a notarized `.app` in a DMG, dragged to
 Silent command failure is confusing. Talking after every miss is worse.
 
 - Command that ran: no sound.
-- Command that could not run (nothing selected, protected app, unknown app name): one short spoken line through `AVSpeechSynthesizer`, plus a menu-bar flash.
+- Command that could not run (nothing selected, unknown app name): one short spoken line through `AVSpeechSynthesizer`, plus a menu-bar flash.
 - Unrecognized speech in Listening: type it. That is dictation, not a failure.
 - Recognizer crash or permission loss: persistent menu-bar error until fixed.
 
@@ -235,7 +235,7 @@ No nested agents or extra processes. One app, one analyzer.
 Matches the priority list in `GOALS.md`. Each stage is usable alone.
 
 1. Menu bar, permissions, asset download, mic picker, session state, sleep observer, finalized dictation into the focused app, voice pause/resume.
-2. Key-press grammar and open/quit, with the never-quit list.
+2. Key-press grammar and open/quit.
 3. Voice Control import, custom language model, case transforms.
 4. Context-aware punctuation and per-word defaults.
 

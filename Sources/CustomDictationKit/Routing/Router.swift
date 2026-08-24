@@ -55,10 +55,8 @@ public enum Router {
         if normalized.hasPrefix("quit ") {
             let name = String(normalized.dropFirst(5))
             do {
-                try AppController.quit(spokenName: name, neverQuitNames: settings.neverQuitNames)
+                try AppController.quit(spokenName: name)
                 return .handled
-            } catch AppControlError.protected {
-                return .failed("\(name) is on the never quit list")
             } catch AppControlError.notFound {
                 return .failed("I could not find \(name)")
             } catch {
