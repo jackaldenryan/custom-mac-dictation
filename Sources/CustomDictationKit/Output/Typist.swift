@@ -29,17 +29,25 @@ public enum Typist {
             DiagnosticLog.line("Key skipped; Accessibility not granted")
             return
         }
-        let source = CGEventSource(stateID: .hidSystemState)
+        let source = CGEventSource(stateID: .privateState)
+        source?.localEventsSuppressionInterval = 0
+        postModifiers(source: source, flags: flags, keyDown: true)
+
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         down?.flags = flags
         up?.flags = flags
-        if let character, var buffer = Optional(Array(character.utf16)) {
+        if flags.isEmpty, let character, var buffer = Optional(Array(character.utf16)) {
             down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
             up?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
         }
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
+
+        postModifiers(source: source, flags: flags, keyDown: false)
+        if flags.contains(.maskShift) {
+            clearUnintendedCapsLock()
+        }
         DiagnosticLog.line("Pressed key \(keyCode) flags=\(flags.rawValue) into \(frontAppName())")
     }
 
@@ -55,12 +63,40 @@ public enum Typist {
         if ns.contains(.option) { flags.insert(.maskAlternate) }
         if ns.contains(.control) { flags.insert(.maskControl) }
         if ns.contains(.function) { flags.insert(.maskSecondaryFn) }
-        if ns.contains(.capsLock) { flags.insert(.maskAlphaShift) }
         return flags
     }
 
-    private static func postUnicode(_ buffer: inout [UniChar]) {
+    private static let modifierKeys: [(CGEventFlags, UInt16)] = [
+        (.maskCommand, 55),
+        (.maskControl, 59),
+        (.maskAlternate, 58),
+        (.maskShift, 56),
+        (.maskSecondaryFn, 63),
+    ]
+
+    private static func postModifiers(source: CGEventSource?, flags: CGEventFlags, keyDown: Bool) {
+        let keys = keyDown ? modifierKeys : modifierKeys.reversed()
+        for (flag, code) in keys where flags.contains(flag) {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: keyDown)
+            event?.flags = keyDown ? flag : []
+            event?.post(tap: .cghidEventTap)
+        }
+    }
+
+    private static func clearUnintendedCapsLock() {
+        let state = CGEventSource.flagsState(.hidSystemState)
+        guard state.contains(.maskAlphaShift) else { return }
         let source = CGEventSource(stateID: .hidSystemState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: 57, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: 57, keyDown: false)
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+        DiagnosticLog.line("Cleared unintended caps lock")
+    }
+
+    private static func postUnicode(_ buffer: inout [UniChar]) {
+        let source = CGEventSource(stateID: .privateState)
+        source?.localEventsSuppressionInterval = 0
         let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
         down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)

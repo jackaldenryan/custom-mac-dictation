@@ -43,7 +43,7 @@ public enum KeyPressGrammar {
         if keyToken.count == 1, let scalar = keyToken.unicodeScalars.first, CharacterSet.letters.contains(scalar) {
             let letter = keyToken.lowercased()
             guard let code = letterKeyCodes[letter] else { return nil }
-            return KeyPressCommand(keyCode: code, flags: flags, character: letter)
+            return KeyPressCommand(keyCode: code, flags: flags)
         }
         if keyToken.count > 1, keyToken.hasPrefix("f"), let number = Int(keyToken.dropFirst()), (1...20).contains(number) {
             return KeyPressCommand(keyCode: functionKeyCodes[number]!, flags: flags)

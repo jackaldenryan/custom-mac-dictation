@@ -39,6 +39,16 @@ public enum Router {
         }
         if let key = KeyPressGrammar.parse(normalized) {
             Typist.press(keyCode: key.keyCode, flags: key.flags, character: key.character)
+            DictationSpacing.noteKeyPress(keyCode: key.keyCode)
+            return .handled
+        }
+        if let punctuation = PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) {
+            switch punctuation {
+            case .typeCharacter(let character):
+                Typist.typeText(DictationSpacing.punctuationToType(character))
+            case .typeWord(let word):
+                Typist.typeText(DictationSpacing.textToType(word))
+            }
             return .handled
         }
         if normalized.hasPrefix("open ") {
@@ -72,19 +82,9 @@ public enum Router {
         if normalized == "lowercase that" {
             return transform(.lowercase)
         }
-        if let punctuation = PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) {
-            switch punctuation {
-            case .typeCharacter(let character):
-                Typist.typeText(character)
-            case .typeWord(let word):
-                Typist.typeText(word + " ")
-            }
-            return .handled
-        }
 
         let typed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let needsSpace = !typed.hasSuffix(" ") && !typed.hasSuffix("\n")
-        Typist.typeText(needsSpace ? typed + " " : typed)
+        Typist.typeText(DictationSpacing.textToType(typed))
         return .typed
     }
 

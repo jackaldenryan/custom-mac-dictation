@@ -57,16 +57,7 @@ public final class ListeningSession: ObservableObject {
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
                 vocabulary: settings.vocabulary,
-                commandPhrases: settings.commands.flatMap(\.phrases) + [
-                    "start listening Mac",
-                    "stop listening Mac",
-                    "press",
-                    "open",
-                    "quit",
-                    "capitalize that",
-                    "uppercase that",
-                    "lowercase that"
-                ]
+                commandPhrases: settings.commands.flatMap(\.phrases) + Self.builtInPhrases
             )
             guard generation == startGeneration else { return }
             setState(.listening)
@@ -112,6 +103,7 @@ public final class ListeningSession: ObservableObject {
         switch result {
         case .handled:
             lastRoute = "command"
+            playHandledSound(for: transcript)
         case .typed:
             lastRoute = "typed"
         case .ignored:
@@ -124,6 +116,36 @@ public final class ListeningSession: ObservableObject {
         }
         DiagnosticLog.line("Route \(lastRoute) state=\(state.rawValue) text=\(transcript)")
     }
+
+    private func playHandledSound(for transcript: String) {
+        switch TranscriptNormalizer.normalize(transcript) {
+        case "start listening mac":
+            SoundFeedback.playStart()
+        case "stop listening mac":
+            SoundFeedback.playStop()
+        default:
+            SoundFeedback.playCommand()
+        }
+    }
+
+    private static let builtInPhrases: [String] = {
+        var phrases = [
+            "start listening Mac",
+            "stop listening Mac",
+            "press",
+            "open",
+            "quit",
+            "open chrome",
+            "quit chrome",
+            "open google chrome",
+            "quit google chrome",
+            "capitalize that",
+            "uppercase that",
+            "lowercase that"
+        ]
+        phrases.append(contentsOf: PunctuationPolicy.table.flatMap(\.names))
+        return phrases
+    }()
 
     private func setState(_ newState: ListeningState) {
         state = newState

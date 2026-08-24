@@ -13,19 +13,44 @@ public enum PunctuationPolicy {
         (["exclamation mark", "exclamation point"], "!"),
         (["colon"], ":"),
         (["semicolon"], ";"),
-        (["dash", "hyphen"], "-"),
+        (["dash", "hyphen", "minus", "minus sign"], "-"),
         (["ellipsis", "dot dot dot"], "…"),
-        (["quote", "quotation mark", "double quote"], "\""),
+        (["quote", "quotation mark", "double quote", "open quote", "close quote", "quotes"], "\""),
         (["single quote", "apostrophe"], "'"),
-        (["open parenthesis", "left parenthesis"], "("),
-        (["close parenthesis", "right parenthesis"], ")"),
-        (["open bracket", "left bracket"], "["),
-        (["close bracket", "right bracket"], "]"),
-        (["open brace", "left brace"], "{"),
-        (["close brace", "right brace"], "}"),
+        ([
+            "open parenthesis", "left parenthesis",
+            "open parentheses", "left parentheses",
+            "open paren", "left paren",
+            "open parens", "left parens",
+            "parentheses", "parenthesis"
+        ], "("),
+        ([
+            "close parenthesis", "right parenthesis",
+            "close parentheses", "right parentheses",
+            "close paren", "right paren",
+            "close parens", "right parens"
+        ], ")"),
+        (["open bracket", "left bracket", "open square bracket", "left square bracket"], "["),
+        (["close bracket", "right bracket", "close square bracket", "right square bracket"], "]"),
+        (["open brace", "left brace", "open curly brace", "left curly brace"], "{"),
+        (["close brace", "right brace", "close curly brace", "right curly brace"], "}"),
         (["slash", "forward slash"], "/"),
         (["backslash"], "\\"),
-        (["underscore"], "_")
+        (["underscore"], "_"),
+        (["asterisk", "star", "star sign"], "*"),
+        (["plus", "plus sign"], "+"),
+        (["equals", "equal sign", "equals sign"], "="),
+        (["ampersand", "and sign"], "&"),
+        (["percent", "percent sign"], "%"),
+        (["dollar", "dollar sign"], "$"),
+        (["hash", "pound", "pound sign", "number sign", "hashtag"], "#"),
+        (["at sign", "at symbol"], "@"),
+        (["tilde"], "~"),
+        (["backtick", "grave", "grave accent"], "`"),
+        (["caret", "circumflex"], "^"),
+        (["pipe", "vertical bar", "bar"], "|"),
+        (["less than", "left angle bracket"], "<"),
+        (["greater than", "right angle bracket"], ">")
     ]
 
     public static func match(normalized: String, modes: [String: PunctuationMode]) -> PunctuationDecision? {
