@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>CustomDictation</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.jackaldenryan.custom-mac-dictation</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Custom Dictation</string>
+	<key>CFBundleDisplayName</key>
+	<string>Custom Dictation</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>VERSION_PLACEHOLDER</string>
+	<key>CFBundleVersion</key>
+	<string>VERSION_PLACEHOLDER</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Custom Dictation listens with your chosen microphone so it can type what you say and run voice commands. Audio stays on this Mac.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Custom Dictation uses on-device speech recognition to turn your speech into text and commands. Audio stays on this Mac.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

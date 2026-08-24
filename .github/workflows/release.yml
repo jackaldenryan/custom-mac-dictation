@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Swift and SDK
+        run: |
+          swift --version
+          xcrun --show-sdk-version
+
+      - name: Build app zip
+        run: ./scripts/package-app.sh
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          zip="dist/CustomDictation-${version}.zip"
+          notes="Download CustomDictation-${version}.zip, unzip it, and drag Custom Dictation into Applications.
+
+          Existing installs can use Settings → Check for updates."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$zip" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$zip" --title "Custom Dictation ${GITHUB_REF_NAME}" --notes "$notes"
+          fi
