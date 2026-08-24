@@ -32,8 +32,10 @@ expect(PunctuationPolicy.match(normalized: "close parentheses", modes: [:]) == .
 expect(PunctuationPolicy.match(normalized: "open parenthesis", modes: [:]) == .typeCharacter("("), "open parenthesis")
 expect(PunctuationPolicy.match(normalized: "question mark", modes: [:]) == .typeCharacter("?"), "question mark")
 expect(PunctuationPolicy.match(normalized: "asterisk", modes: [:]) == .typeCharacter("*"), "asterisk")
-expect(AppNameResolver.knownBundleID(for: "chrome") == "com.google.Chrome", "chrome alias")
-expect(AppNameResolver.knownBundleID(for: "Google Chrome") == "com.google.Chrome", "google chrome alias")
+expect(!AppNameResolver.discoveredApps().isEmpty, "discovers installed apps")
+if let chrome = AppNameResolver.resolve("chrome") {
+    expect(chrome.name.lowercased().contains("chrome"), "chrome from installed apps")
+}
 
 DictationSpacing.reset()
 expect(DictationSpacing.textToType("a") == "a", "first phrase no lead space")

@@ -57,7 +57,7 @@ public final class ListeningSession: ObservableObject {
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
                 vocabulary: settings.vocabulary,
-                commandPhrases: settings.commands.flatMap(\.phrases) + Self.builtInPhrases
+                commandPhrases: settings.commands.flatMap(\.phrases) + Self.builtInPhrases + AppNameResolver.commandPhrases()
             )
             guard generation == startGeneration else { return }
             setState(.listening)
@@ -135,10 +135,6 @@ public final class ListeningSession: ObservableObject {
             "press",
             "open",
             "quit",
-            "open chrome",
-            "quit chrome",
-            "open google chrome",
-            "quit google chrome",
             "capitalize that",
             "uppercase that",
             "lowercase that"

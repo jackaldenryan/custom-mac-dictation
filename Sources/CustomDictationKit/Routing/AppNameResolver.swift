@@ -16,52 +16,16 @@ public struct ResolvedApp: Equatable, Sendable {
 }
 
 public enum AppNameResolver {
-    public static let bundleAliases: [String: String] = [
-        "chrome": "com.google.Chrome",
-        "google chrome": "com.google.Chrome",
-        "safari": "com.apple.Safari",
-        "finder": "com.apple.finder",
-        "mail": "com.apple.mail",
-        "notes": "com.apple.Notes",
-        "messages": "com.apple.MobileSMS",
-        "music": "com.apple.Music",
-        "terminal": "com.apple.Terminal",
-        "iterm": "com.googlecode.iterm2",
-        "cursor": "com.todesktop.230313mzl4w4u92",
-        "code": "com.microsoft.VSCode",
-        "visual studio code": "com.microsoft.VSCode",
-        "textedit": "com.apple.TextEdit",
-        "text edit": "com.apple.TextEdit",
-        "slack": "com.tinyspeck.slackmacgap",
-        "zoom": "us.zoom.xos",
-        "spotify": "com.spotify.client",
-        "calendar": "com.apple.iCal",
-        "preview": "com.apple.Preview",
-        "photos": "com.apple.Photos",
-        "system settings": "com.apple.systempreferences",
-        "settings": "com.apple.systempreferences",
-    ]
-
-    public static func knownBundleID(for spoken: String) -> String? {
-        bundleAliases[TranscriptNormalizer.normalize(spoken)]
-    }
-
     public static func resolve(_ spoken: String) -> ResolvedApp? {
         let cleaned = stripLeadingArticle(TranscriptNormalizer.normalize(spoken))
         let query = tokens(cleaned)
         guard !query.isEmpty else { return nil }
 
-        if let bundleID = knownBundleID(for: cleaned),
-           let resolved = resolveBundleID(bundleID)
-        {
-            return resolved
-        }
-
         var candidates: [(ResolvedApp, Int)] = []
 
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
             let name = app.localizedName ?? app.bundleIdentifier ?? ""
-            let score = scoreMatch(query, tokens(name) + tokens(app.bundleIdentifier ?? ""))
+            let score = scoreMatch(query, tokens(name))
             if score > 0, let url = app.bundleURL {
                 candidates.append((
                     ResolvedApp(url: url, name: name, bundleIdentifier: app.bundleIdentifier, running: app),
@@ -70,17 +34,15 @@ public enum AppNameResolver {
             }
         }
 
-        for url in applicationURLs() {
-            let name = url.deletingPathExtension().lastPathComponent
-            let score = scoreMatch(query, tokens(name))
+        for app in discoveredApps() {
+            let score = scoreMatch(query, tokens(app.name))
             if score > 0 {
-                let bundle = Bundle(url: url)
                 candidates.append((
                     ResolvedApp(
-                        url: url,
-                        name: name,
-                        bundleIdentifier: bundle?.bundleIdentifier,
-                        running: runningApp(bundleIdentifier: bundle?.bundleIdentifier, url: url)
+                        url: app.url,
+                        name: app.name,
+                        bundleIdentifier: app.bundleIdentifier,
+                        running: runningApp(bundleIdentifier: app.bundleIdentifier, url: app.url)
                     ),
                     score
                 ))
@@ -91,6 +53,21 @@ public enum AppNameResolver {
             if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
             return lhs.0.name.count > rhs.0.name.count
         }?.0
+    }
+
+    public static func commandPhrases() -> [String] {
+        var phrases: [String] = []
+        var seen = Set<String>()
+        for app in discoveredApps() {
+            let names = spokenVariants(app.name)
+            for name in names {
+                let key = name.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                phrases.append("open \(name)")
+                phrases.append("quit \(name)")
+            }
+        }
+        return phrases
     }
 
     public static func runningApp(bundleIdentifier: String?, url: URL?) -> NSRunningApplication? {
@@ -108,20 +85,46 @@ public enum AppNameResolver {
         return nil
     }
 
-    private static func resolveBundleID(_ bundleID: String) -> ResolvedApp? {
-        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-        let running = runningApp(bundleIdentifier: bundleID, url: url)
-        let resolvedURL = url ?? running?.bundleURL
-        guard let resolvedURL else { return nil }
-        let name = running?.localizedName
-            ?? Bundle(url: resolvedURL)?.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? resolvedURL.deletingPathExtension().lastPathComponent
-        return ResolvedApp(
-            url: resolvedURL,
-            name: name,
-            bundleIdentifier: bundleID,
-            running: running
-        )
+    public static func discoveredApps() -> [ResolvedApp] {
+        var byURL: [URL: ResolvedApp] = [:]
+
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            guard let url = app.bundleURL else { continue }
+            let name = app.localizedName ?? url.deletingPathExtension().lastPathComponent
+            byURL[url.standardizedFileURL] = ResolvedApp(
+                url: url,
+                name: name,
+                bundleIdentifier: app.bundleIdentifier,
+                running: app
+            )
+        }
+
+        for url in applicationURLs() {
+            let key = url.standardizedFileURL
+            if byURL[key] != nil { continue }
+            let bundle = Bundle(url: url)
+            let name = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+                ?? bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
+                ?? url.deletingPathExtension().lastPathComponent
+            byURL[key] = ResolvedApp(
+                url: url,
+                name: name,
+                bundleIdentifier: bundle?.bundleIdentifier,
+                running: runningApp(bundleIdentifier: bundle?.bundleIdentifier, url: url)
+            )
+        }
+
+        return Array(byURL.values)
+    }
+
+    private static func spokenVariants(_ name: String) -> [String] {
+        let parts = tokens(name)
+        guard !parts.isEmpty else { return [] }
+        var variants = [parts.joined(separator: " ")]
+        if parts.count > 1, let last = parts.last {
+            variants.append(last)
+        }
+        return variants
     }
 
     private static func applicationURLs() -> [URL] {
