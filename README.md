@@ -1,38 +1,37 @@
 # Custom Dictation
 
-Always-on macOS dictation in the menu bar. It types into the focused app and runs voice commands, using Apple’s on-device dictation engine. Audio stays on this Mac.
+Download the Mac app from [Releases](https://github.com/jackaldenryan/custom-mac-dictation/releases/latest), drag it into Applications, and open it. It is an always-on menu bar dictation app. It types into the focused app and runs voice commands, using Apple’s on-device dictation engine. Audio stays on this Mac.
 
-You are the only user right now. Test by installing the app on this Mac and talking to it. Product goals are in `GOALS.md`. The build plan is in `ARCHITECTURE.md`.
+## Install
 
-## Test it on this Mac
+1. Open the [latest release](https://github.com/jackaldenryan/custom-mac-dictation/releases/latest).
+2. Download **CustomDictation-x.y.z.dmg**.
+3. Open the disk image and drag **Custom Dictation** into Applications.
+4. Open **Custom Dictation** from Applications.
 
-Do this from the repo root. It builds the app, copies it to Applications, and launches it.
-
-```
-./scripts/install-local.sh
-```
-
-If macOS blocks the unsigned app:
+The app is not notarized yet. If macOS says it cannot be opened, right-click the app, choose Open, and confirm. You can also run this once:
 
 ```
 xattr -cr "/Applications/Custom Dictation.app"
 ```
 
-Then open **Custom Dictation** from Applications again.
+Then open it again from Applications.
 
-### First launch
+A `.zip` is attached to the same release. The in-app updater uses that zip. You do not need it for a first install.
+
+## First launch
+
+Keep Voice Control off while this app is listening. They should not both run.
 
 1. Grant **Microphone**.
 2. Grant **Speech Recognition** if macOS asks.
-3. Turn on **Custom Dictation** in System Settings → Privacy & Security → Accessibility. Click the onboarding button again after it is enabled.
+3. Turn on **Custom Dictation** in System Settings → Privacy & Security → Accessibility, then continue in the setup window.
 4. Wait if it downloads Apple speech models.
-5. Import Voice Control when asked. That pulls the vocabulary and custom commands already on this machine.
+5. Import Voice Control when asked, so your existing vocabulary and custom commands come along.
 6. Pick the USB headset, not the built-in mic.
-7. Finish. The menu bar mic icon should show it is listening.
+7. Finish. The menu bar mic should show that it is listening.
 
-Keep Voice Control **off** while you test this app. They should not both listen.
-
-### What to try
+## What to try after it is installed
 
 Open TextEdit, click in the window, and speak.
 
@@ -40,73 +39,52 @@ Open TextEdit, click in the window, and speak.
 - Say **stop listening Mac**. Further speech should do nothing.
 - Say **start listening Mac**. Dictation should resume.
 - Say **press return**. That should press Return.
-- Say **press command shift q** only in a throwaway window. That should send that shortcut.
 - Say **open Safari**, then **quit Safari**.
 - Say **quit Terminal**. It should refuse. Same for Zoom.
 - Select a word, say **uppercase that**. If nothing is selected, it should say so.
 - Say **comma**. It should type `,`.
 - Say **the word comma**. It should type the word.
 
-Put the Mac to sleep. After it wakes, listening must stay off until you open the menu bar icon and choose **Start Listening**. A head-pointer click on that menu is the intended path.
+Put the Mac to sleep. After it wakes, listening stays off until you open the menu bar icon and choose **Start Listening**. A head-pointer click on that menu is the intended path.
 
 With Cursor holding a long agent conversation, dictate into TextEdit. It should feel no slower than with Cursor closed.
 
-### Menu bar
+## Menu bar and settings
 
-The icon is the daily UI.
+The menu bar icon is the daily UI.
 
 - Filled mic: listening
 - Pause: suspended by voice
 - Slashed mic: off
 
-**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, never-quit list, Voice Control import/export, punctuation defaults, and **Check for updates**.
-
-## Install from a GitHub release
-
-After a tagged release exists, download `CustomDictation-*.zip` from [Releases](https://github.com/jackaldenryan/custom-mac-dictation/releases/latest). Unzip it and drag **Custom Dictation** into Applications, then open it. If macOS blocks it, run the `xattr` command above.
+**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, the never-quit list, Voice Control import and export, punctuation defaults, and **Check for updates**.
 
 ## Updates
 
 The app checks GitHub Releases when it opens. Settings also has **Check for updates**. If a newer version exists, you can install it or choose Later.
 
-You do not need to download a new zip after the first install unless you prefer to.
+You do not need to download a new disk image after the first install unless you prefer to.
 
-## Publish a version
+## Requirements
 
-Do this after the code you want is on `origin/main`.
+macOS 26 or newer, on Apple Silicon. No paid API key.
 
-1. Set `VERSION` to the new number, such as `0.1.1`. Keep it in sync with what you want the tag to be.
-2. Commit that bump and push it to `origin/main`.
-3. From the repo root:
+This app does not number on-screen controls and does not inspect other apps’ interface trees.
+
+## Build from source
+
+This section is only for changing the app. Ordinary install is the release download above.
+
+```
+./scripts/package-app.sh
+```
+
+That writes `dist/Custom Dictation.app`, a zip, and a disk image.
+
+To publish a version, set `VERSION`, commit, push to `origin/main`, then run:
 
 ```
 ./scripts/publish-tag.sh
 ```
 
-That tags `vX.Y.Z` and pushes it. GitHub Actions builds `CustomDictation-X.Y.Z.zip` and attaches it to the GitHub release.
-
-Confirm Actions can write releases: **Settings → Actions → General → Workflow permissions → Read and write permissions**.
-
-If Actions cannot build (the runner needs the macOS 26 SDK), build on this Mac and attach the zip:
-
-```
-./scripts/package-app.sh
-```
-
-```
-gh release create v0.1.0 dist/CustomDictation-0.1.0.zip --title "Custom Dictation v0.1.0" --notes "First installable build."
-```
-
-## Build without installing
-
-```
-./scripts/package-app.sh
-```
-
-The app lands at `dist/Custom Dictation.app`.
-
-## Requirements
-
-macOS 26 or newer. Apple Silicon is the machine this was built for. No paid API key.
-
-Do not run Voice Control at the same time. This app does not number on-screen controls and does not inspect other apps’ interface trees.
+GitHub Actions attaches the disk image and zip to the GitHub release. If the runner cannot build, package on a Mac with the macOS 26 SDK and upload the files with `gh release create`.

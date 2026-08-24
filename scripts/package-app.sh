@@ -27,5 +27,20 @@ if command -v codesign >/dev/null; then
 fi
 
 ditto -c -k --keepParent "$app" "$dist/CustomDictation-$version.zip"
+
+dmg_root="$dist/dmg"
+rm -rf "$dmg_root"
+mkdir -p "$dmg_root"
+ditto "$app" "$dmg_root/$app_name.app"
+ln -s /Applications "$dmg_root/Applications"
+hdiutil create \
+  -volname "$app_name" \
+  -srcfolder "$dmg_root" \
+  -ov \
+  -format UDZO \
+  "$dist/CustomDictation-$version.dmg" >/dev/null
+rm -rf "$dmg_root"
+
 echo "$app"
 echo "$dist/CustomDictation-$version.zip"
+echo "$dist/CustomDictation-$version.dmg"
