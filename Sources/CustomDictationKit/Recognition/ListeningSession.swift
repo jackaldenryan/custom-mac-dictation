@@ -164,7 +164,6 @@ public final class ListeningSession: ObservableObject {
             "uppercase that",
             "lowercase that"
         ]
-        phrases.append(contentsOf: PunctuationPolicy.table.flatMap(\.names))
         return phrases
     }()
 

@@ -30,9 +30,13 @@ public enum KeyPressGrammar {
             }
         }
 
-        guard let keyToken = leftover.last else { return nil }
-        leftover.removeLast()
-        if !leftover.isEmpty { return nil }
+        guard !leftover.isEmpty else { return nil }
+        let joined = leftover.joined(separator: " ")
+        if let character = punctuationCharacter(joined) {
+            return KeyPressCommand(keyCode: 0, flags: flags, character: character)
+        }
+
+        guard leftover.count == 1, let keyToken = leftover.first else { return nil }
 
         if let named = namedKey(keyToken) {
             return KeyPressCommand(keyCode: named, flags: flags)
@@ -61,6 +65,66 @@ public enum KeyPressGrammar {
         default: return nil
         }
     }
+
+    private static func punctuationCharacter(_ name: String) -> String? {
+        punctuationNames[name]
+    }
+
+    private static let punctuationNames: [String: String] = {
+        var map: [String: String] = [:]
+        let pairs: [(String, String)] = [
+            ("comma", ","),
+            ("period", "."), ("full stop", "."), ("dot", "."),
+            ("question mark", "?"),
+            ("exclamation mark", "!"), ("exclamation point", "!"),
+            ("colon", ":"),
+            ("semicolon", ";"),
+            ("dash", "-"), ("hyphen", "-"), ("minus", "-"), ("minus sign", "-"),
+            ("ellipsis", "…"), ("dot dot dot", "…"),
+            ("quote", "\""), ("quotation mark", "\""), ("double quote", "\""),
+            ("open quote", "\""), ("close quote", "\""), ("quotes", "\""),
+            ("single quote", "'"), ("apostrophe", "'"),
+            ("open parenthesis", "("), ("left parenthesis", "("),
+            ("open parentheses", "("), ("left parentheses", "("),
+            ("open paren", "("), ("left paren", "("),
+            ("open parens", "("), ("left parens", "("),
+            ("parentheses", "("), ("parenthesis", "("),
+            ("close parenthesis", ")"), ("right parenthesis", ")"),
+            ("close parentheses", ")"), ("right parentheses", ")"),
+            ("close paren", ")"), ("right paren", ")"),
+            ("close parens", ")"), ("right parens", ")"),
+            ("open bracket", "["), ("left bracket", "["),
+            ("open square bracket", "["), ("left square bracket", "["),
+            ("close bracket", "]"), ("right bracket", "]"),
+            ("close square bracket", "]"), ("right square bracket", "]"),
+            ("open brace", "{"), ("left brace", "{"),
+            ("open curly brace", "{"), ("left curly brace", "{"),
+            ("close brace", "}"), ("right brace", "}"),
+            ("close curly brace", "}"), ("right curly brace", "}"),
+            ("slash", "/"), ("forward slash", "/"),
+            ("backslash", "\\"),
+            ("underscore", "_"),
+            ("asterisk", "*"), ("star", "*"), ("star sign", "*"),
+            ("plus", "+"), ("plus sign", "+"),
+            ("equals", "="), ("equal sign", "="), ("equals sign", "="),
+            ("ampersand", "&"), ("and sign", "&"),
+            ("percent", "%"), ("percent sign", "%"),
+            ("dollar", "$"), ("dollar sign", "$"),
+            ("hash", "#"), ("pound", "#"), ("pound sign", "#"),
+            ("number sign", "#"), ("hashtag", "#"),
+            ("at sign", "@"), ("at symbol", "@"),
+            ("tilde", "~"),
+            ("backtick", "`"), ("grave", "`"), ("grave accent", "`"),
+            ("caret", "^"), ("circumflex", "^"),
+            ("pipe", "|"), ("vertical bar", "|"), ("bar", "|"),
+            ("less than", "<"), ("left angle bracket", "<"),
+            ("greater than", ">"), ("right angle bracket", ">")
+        ]
+        for (name, character) in pairs {
+            map[name] = character
+        }
+        return map
+    }()
 
     private static func namedKey(_ token: String) -> UInt16? {
         switch token {

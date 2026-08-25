@@ -61,6 +61,7 @@ private struct AppRootView: View {
     @State private var newWord = ""
     @State private var newIPA = ""
     @State private var vocabMessage = ""
+    @State private var commandMessage = ""
     @State private var importingVoiceControl = false
     @State private var newPhrase = ""
     @State private var newCommandKind: CustomCommandKind = .pasteText
@@ -75,8 +76,8 @@ private struct AppRootView: View {
                 .tabItem { Label("Listen", systemImage: "mic.fill") }
             vocabularyTab
                 .tabItem { Label("Vocabulary", systemImage: "text.book.closed") }
-            punctuationTab
-                .tabItem { Label("Punctuation", systemImage: "textformat") }
+            commandsTab
+                .tabItem { Label("Commands", systemImage: "command") }
             updatesTab
                 .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
             diagnosticsTab
@@ -195,20 +196,25 @@ private struct AppRootView: View {
 
     private var vocabularyTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Vocabulary and commands")
+            Text("Vocabulary")
                 .font(.title2.weight(.semibold))
-            Text("\(settings.vocabulary.count) vocabulary entries, \(settings.commands.count) custom commands.")
+            Text("Words the recognizer should learn. Leave pronunciation blank unless a word is often misheard.")
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack {
                 TextField("Word", text: $newWord)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 160)
-                TextField("IPA optional", text: $newIPA)
+                TextField("Pronunciation, IPA, optional", text: $newIPA)
                     .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 140)
-                Button("Add") { addWord() }
+                    .frame(minWidth: 200)
+                    .help("International Phonetic Alphabet, only if the word is often misheard. Example: kæt for cat.")
+                Button("Add word") { addWord() }
                     .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            Text("IPA is a pronunciation spelling. Skip it for ordinary words.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             HStack {
                 Button(importingVoiceControl ? "Importing…" : "Import from Voice Control") {
                     importVoiceControl()
@@ -217,6 +223,36 @@ private struct AppRootView: View {
                 Button("Export…") { exportJSON() }
                 Button("Import file…") { importJSON() }
             }
+            if !vocabMessage.isEmpty {
+                Text(vocabMessage)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            List {
+                ForEach(settings.vocabulary) { entry in
+                    HStack {
+                        Text(entry.word)
+                        if !entry.ipa.isEmpty {
+                            Text(entry.ipa.joined(separator: ", "))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Remove") { removeWord(entry) }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var commandsTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Commands")
+                .font(.title2.weight(.semibold))
+            Text("A whole spoken phrase runs one action. It does not replace words inside ordinary dictation.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack {
                 TextField("Say this", text: $newPhrase)
                     .textFieldStyle(.roundedBorder)
@@ -231,37 +267,28 @@ private struct AppRootView: View {
                 Button("Add command") { addCommand() }
                     .disabled(!canAddCommand)
             }
-            if !vocabMessage.isEmpty {
-                Text(vocabMessage)
+            HStack {
+                Button(importingVoiceControl ? "Importing…" : "Import from Voice Control") {
+                    importVoiceControl()
+                }
+                .disabled(importingVoiceControl)
+            }
+            if !commandMessage.isEmpty {
+                Text(commandMessage)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             List {
-                Section("Words") {
-                    ForEach(settings.vocabulary) { entry in
-                        HStack {
-                            Text(entry.word)
-                            if !entry.ipa.isEmpty {
-                                Text(entry.ipa.joined(separator: ", "))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button("Remove") { removeWord(entry) }
-                        }
-                    }
-                }
-                Section("Commands") {
-                    ForEach(settings.commands) { command in
-                        HStack {
-                            Text(command.phrases.joined(separator: ", "))
-                            Text(command.kind.title)
-                                .foregroundStyle(.secondary)
-                            Text(commandSummary(command))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Spacer()
-                            Button("Remove") { removeCommand(command) }
-                        }
+                ForEach(settings.commands) { command in
+                    HStack {
+                        Text(command.phrases.joined(separator: ", "))
+                        Text(command.kind.title)
+                            .foregroundStyle(.secondary)
+                        Text(commandSummary(command))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Remove") { removeCommand(command) }
                     }
                 }
             }
@@ -288,28 +315,6 @@ private struct AppRootView: View {
                 Button("Choose…") { chooseCommandFile() }
             }
         }
-    }
-
-    private var punctuationTab: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Punctuation defaults")
-                    .font(.title2.weight(.semibold))
-                Text("Choose whether a spoken name types the character or the word.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(PunctuationPolicy.table, id: \.names[0]) { entry in
-                    Picker(entry.names[0], selection: punctuationBinding(entry.names[0])) {
-                        Text("Character \(entry.character)").tag(PunctuationMode.character)
-                        Text("Literal word").tag(PunctuationMode.word)
-                        Text("Off").tag(PunctuationMode.off)
-                    }
-                }
-            }
-            .padding(.trailing, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var diagnosticsTab: some View {
@@ -379,13 +384,6 @@ private struct AppRootView: View {
         )
     }
 
-    private func punctuationBinding(_ word: String) -> Binding<PunctuationMode> {
-        Binding(
-            get: { settings.punctuationModes[word] ?? .character },
-            set: { settings.punctuationModes[word] = $0; persist() }
-        )
-    }
-
     private func persist() {
         _ = store.update { $0 = settings }
         settings = store.settings
@@ -437,7 +435,7 @@ private struct AppRootView: View {
             command.pasteText = newPasteText
         case .shortcut:
             guard let parsed = parseShortcut(newShortcut) else {
-                vocabMessage = "Could not parse that shortcut."
+                commandMessage = "Could not parse that shortcut."
                 return
             }
             command.keyCode = Int(parsed.keyCode)
@@ -457,13 +455,13 @@ private struct AppRootView: View {
         newShortcut = ""
         newFilePath = ""
         newFileBookmark = nil
-        vocabMessage = "Added command. Restart listening to apply."
+        commandMessage = "Added command. Restart listening to apply."
     }
 
     private func removeCommand(_ command: ImportedCommand) {
         settings.commands.removeAll { $0.id == command.id }
         persist()
-        vocabMessage = "Removed command."
+        commandMessage = "Removed command."
     }
 
     private func commandSummary(_ command: ImportedCommand) -> String {
@@ -508,6 +506,7 @@ private struct AppRootView: View {
     private func importVoiceControl() {
         importingVoiceControl = true
         vocabMessage = "Importing…"
+        commandMessage = "Importing…"
         Task.detached {
             do {
                 let result = try VoiceControlImporter.importFromThisMac()
@@ -517,12 +516,15 @@ private struct AppRootView: View {
                     settings.commands = kept + result.commands
                     persist()
                     importingVoiceControl = false
-                    vocabMessage = "Imported \(result.vocabulary.count) words and \(result.commands.count) commands."
+                    let summary = "Imported \(result.vocabulary.count) words and \(result.commands.count) commands."
+                    vocabMessage = summary
+                    commandMessage = summary
                 }
             } catch {
                 await MainActor.run {
                     importingVoiceControl = false
                     vocabMessage = error.localizedDescription
+                    commandMessage = error.localizedDescription
                 }
             }
         }

@@ -57,7 +57,7 @@ The menu bar icon is the daily UI.
 - Pause: suspended by voice
 - Slashed mic: off
 
-**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, Voice Control import and export, punctuation defaults, and **Check for updates**.
+**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, vocabulary, commands, Voice Control import and export, and **Check for updates**. Apple’s recognizer supplies punctuation. Say a whole phrase like “press the open parentheses key” to type a character by name.
 
 ## Updates
 

@@ -16,12 +16,6 @@ public enum Router {
         onStartListening: () -> Void,
         onStopListening: () -> Void
     ) -> RouteResult {
-        if let character = PunctuationPolicy.matchRawCharacter(transcript) {
-            if state != .listening { return .ignored }
-            LivePhrase.discard()
-            Typist.typeText(DictationSpacing.punctuationToType(character))
-            return .handled
-        }
         let normalized = TranscriptNormalizer.normalize(transcript)
         guard !normalized.isEmpty else { return .ignored }
 
@@ -52,22 +46,9 @@ public enum Router {
             DictationSpacing.noteKeyPress(keyCode: key.keyCode)
             return .handled
         }
-        if let punctuation = PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) {
-            LivePhrase.discard()
-            switch punctuation {
-            case .typeCharacter(let character):
-                Typist.typeText(DictationSpacing.punctuationToType(character))
-            case .typeWord(let word):
-                Typist.typeText(DictationSpacing.textToType(word))
-            }
-            return .handled
-        }
-        if normalized.hasPrefix("open "), !PunctuationPolicy.looksLikePunctuation(normalized) {
+        if normalized.hasPrefix("open ") {
             LivePhrase.discard()
             let name = String(normalized.dropFirst(5))
-            guard !PunctuationPolicy.looksLikePunctuation(name) else {
-                return .failed("I could not type that punctuation")
-            }
             do {
                 try AppController.open(spokenName: name)
                 return .handled
@@ -116,10 +97,6 @@ public enum Router {
         if normalized == "open" || normalized.hasPrefix("open ") { return true }
         if normalized == "quit" || normalized.hasPrefix("quit ") { return true }
         if normalized.hasPrefix("capitalize") || normalized.hasPrefix("uppercase") || normalized.hasPrefix("lowercase") {
-            return true
-        }
-        if PunctuationPolicy.matchRawCharacter(transcript) != nil { return true }
-        if PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) != nil {
             return true
         }
         if matchImported(normalized: normalized, settings: settings) != nil {
