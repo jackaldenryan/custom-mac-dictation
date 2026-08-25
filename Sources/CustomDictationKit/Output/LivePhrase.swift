@@ -4,45 +4,42 @@ public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
 
     public static func show(_ text: String) {
-        apply(text, keepSelected: !text.isEmpty)
+        apply(text)
     }
 
     public static func commit(_ text: String) {
-        apply(text, keepSelected: false)
+        apply(text)
         displayed = ""
     }
 
     public static func discard() {
-        apply("", keepSelected: false)
+        apply("")
         displayed = ""
     }
 
     public static func keepAndUnhighlight() {
         guard !displayed.isEmpty else { return }
-        Typist.moveRight()
         DictationSpacing.markCommitted(displayed)
         displayed = ""
     }
 
-    private static func apply(_ text: String, keepSelected: Bool) {
-        if displayed == text {
-            if !keepSelected, !displayed.isEmpty {
-                Typist.moveRight()
-            }
-            return
-        }
+    private static func apply(_ text: String) {
+        if displayed == text { return }
         if displayed.isEmpty {
             Typist.typeText(text)
-        } else if text.hasPrefix(displayed) {
-            Typist.moveRight()
+        } else if folds(text).hasPrefix(folds(displayed)) {
             Typist.typeText(String(text.dropFirst(displayed.count)))
         } else {
-            Typist.deleteSelection()
+            Typist.deleteBackward(times: displayed.count)
             Typist.typeText(text)
         }
         displayed = text
-        if keepSelected, !text.isEmpty {
-            Typist.selectLeft(characters: text.count)
-        }
+    }
+
+    private static func folds(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{02BC}", with: "'")
     }
 }

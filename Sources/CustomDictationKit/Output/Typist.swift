@@ -44,20 +44,16 @@ public enum Typist {
         pressKey(51, flags: [])
     }
 
-    public static func moveRight() {
-        pressKey(124, flags: [])
+    public static func deleteBackward(times: Int) {
+        guard times > 0 else { return }
+        if !AXIsProcessTrusted() { return }
+        for _ in 0..<times {
+            pressKey(51, flags: [])
+        }
     }
 
-    public static func selectLeft(characters: Int) {
-        guard characters > 0 else { return }
-        if !AXIsProcessTrusted() { return }
-        let source = CGEventSource(stateID: .privateState)
-        source?.localEventsSuppressionInterval = 0
-        postModifiers(source: source, flags: .maskShift, keyDown: true)
-        for _ in 0..<characters {
-            pressKey(123, flags: .maskShift, source: source)
-        }
-        postModifiers(source: source, flags: .maskShift, keyDown: false)
+    public static func moveRight() {
+        pressKey(124, flags: [])
     }
 
     public static func pressShortcut(keyCode: Int, modifierFlags: UInt64) {
