@@ -6,6 +6,7 @@ import Speech
 public final class SpeechEngine: @unchecked Sendable {
     public var onFinalTranscript: (@Sendable (String) -> Void)?
     public var onPartialTranscript: (@Sendable (String) -> Void)?
+    public var onFinalizeIdle: (@Sendable () -> Void)?
     public var onError: (@Sendable (Error) -> Void)?
     public var onAssetProgress: (@Sendable (Double) -> Void)?
 
@@ -121,7 +122,12 @@ public final class SpeechEngine: @unchecked Sendable {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { continue }
+                    if text.isEmpty || TranscriptNormalizer.isPunctuationOnly(text) {
+                        if result.isFinal {
+                            self?.onFinalizeIdle?()
+                        }
+                        continue
+                    }
                     DiagnosticLog.line(
                         "Transcript final=\(result.isFinal) t=\(result.resultsFinalizationTime.seconds) text=\(text)"
                     )
@@ -221,8 +227,10 @@ public final class SpeechEngine: @unchecked Sendable {
         do {
             DiagnosticLog.line("Finalize through \(through.seconds)")
             try await analyzer.finalize(through: through)
+            onFinalizeIdle?()
         } catch {
             DiagnosticLog.line("Finalize error: \(error.localizedDescription)")
+            onFinalizeIdle?()
         }
     }
 

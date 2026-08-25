@@ -21,6 +21,11 @@ expect(KeyPressGrammar.parse("press command shift q")?.keyCode == 12, "cmd shift
 expect(KeyPressGrammar.parse("press the one key")?.keyCode == 18, "one key")
 expect(KeyPressGrammar.parse("press return")?.keyCode == 36, "return")
 expect(TranscriptNormalizer.normalize("Stop listening, Mac.") == "stop listening mac", "normalize")
+expect(TranscriptNormalizer.isPunctuationOnly("."), "lone period")
+expect(TranscriptNormalizer.isPunctuationOnly("?"), "lone question")
+expect(TranscriptNormalizer.isPunctuationOnly(".."), "double period")
+expect(!TranscriptNormalizer.isPunctuationOnly("store."), "phrase with period")
+expect(!TranscriptNormalizer.isPunctuationOnly("hello"), "word")
 expect(AppVersion.isRemoteNewer("0.2.0", than: "0.1.0"), "newer")
 expect(!AppVersion.isRemoteNewer("0.1.0", than: "0.1.0"), "same")
 expect(IPAToXSampa.convert("kæt") == "k{t", "ipa")
@@ -37,27 +42,25 @@ expect(Router.shouldHoldLive(transcript: "press return", state: .listening, sett
 expect(!Router.shouldHoldLive(transcript: "hello there", state: .listening, settings: .default), "live hello")
 expect(!Router.shouldHoldLive(transcript: "comma", state: .listening, settings: .default), "live comma words")
 expect(Router.shouldHoldLive(transcript: "press the open parentheses key", state: .listening, settings: .default), "hold press paren")
-expect(!Router.shouldHoldLive(transcript: "(", state: .listening, settings: .default), "live open paren char")
-expect(!Router.shouldHoldLive(transcript: "{", state: .listening, settings: .default), "live open brace char")
 expect(
     Router.handle(
-        transcript: "(",
+        transcript: ".",
         state: .listening,
         settings: .default,
         onStartListening: {},
         onStopListening: {}
-    ) == .typed,
-    "type open paren char"
+    ) == .ignored,
+    "ignore lone period"
 )
 expect(
     Router.handle(
-        transcript: "]",
+        transcript: "?",
         state: .listening,
         settings: .default,
         onStartListening: {},
         onStopListening: {}
-    ) == .typed,
-    "type close bracket char"
+    ) == .ignored,
+    "ignore lone question"
 )
 
 print("CheckLogic passed")

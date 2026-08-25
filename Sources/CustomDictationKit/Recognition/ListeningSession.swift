@@ -33,6 +33,11 @@ public final class ListeningSession: ObservableObject {
                 self?.handlePartial(text)
             }
         }
+        engine.onFinalizeIdle = { [weak self] in
+            Task { @MainActor in
+                self?.clearStaleHearing()
+            }
+        }
         engine.onError = { [weak self] error in
             Task { @MainActor in
                 DiagnosticLog.line("Session error: \(error.localizedDescription)")
@@ -111,6 +116,10 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handlePartial(_ text: String) {
+        if TranscriptNormalizer.isPunctuationOnly(text) {
+            lastPartial = ""
+            return
+        }
         lastPartial = text
         guard state == .listening else { return }
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
@@ -119,7 +128,15 @@ public final class ListeningSession: ObservableObject {
         LivePhrase.show(text)
     }
 
+    private func clearStaleHearing() {
+        lastPartial = ""
+    }
+
     private func handle(transcript: String) {
+        if TranscriptNormalizer.isPunctuationOnly(transcript) {
+            lastPartial = ""
+            return
+        }
         lastFinal = transcript
         lastPartial = ""
         let settings = store.settings

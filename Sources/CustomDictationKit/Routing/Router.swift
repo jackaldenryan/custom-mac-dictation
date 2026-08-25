@@ -82,7 +82,7 @@ public enum Router {
             return transform(.lowercase)
         }
 
-        guard !trimmed.isEmpty else { return .ignored }
+        guard !trimmed.isEmpty, !TranscriptNormalizer.isPunctuationOnly(trimmed) else { return .ignored }
         LivePhrase.commit(trimmed)
         return .typed
     }
