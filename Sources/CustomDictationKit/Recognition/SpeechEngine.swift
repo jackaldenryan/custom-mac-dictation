@@ -23,6 +23,7 @@ public final class SpeechEngine: @unchecked Sendable {
     private var lastVolatileAt = Date.distantPast
     private var pendingFinalize = false
     private var bufferCount = 0
+    public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
 
     public init() {}
 
@@ -148,7 +149,6 @@ public final class SpeechEngine: @unchecked Sendable {
                         self.lastSpeechEnd = result.range.end
                     } else if result.isFinal || result.range.end.isValid {
                         self.lastSpeechEnd = result.range.end
-                        await self.finalizeThroughLatest()
                     }
                 }
             } catch is CancellationError {
@@ -160,9 +160,9 @@ public final class SpeechEngine: @unchecked Sendable {
 
         finalizeTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(200))
+                try? await Task.sleep(for: .milliseconds(50))
                 guard let self, self.pendingFinalize else { continue }
-                if Date().timeIntervalSince(self.lastVolatileAt) >= 0.4 {
+                if Date().timeIntervalSince(self.lastVolatileAt) >= self.finalizeDelaySeconds {
                     await self.finalizeThroughLatest()
                 }
             }

@@ -54,6 +54,7 @@ public final class ListeningSession: ObservableObject {
         DiagnosticLog.line("Start listening requested")
         do {
             let settings = store.settings
+            engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
                 vocabulary: settings.vocabulary,
@@ -89,6 +90,10 @@ public final class ListeningSession: ObservableObject {
         await engine.stop()
         setState(.off, persist: persist)
         DiagnosticLog.line("Stopped")
+    }
+
+    public func setFinalizeDelay(_ seconds: Double) {
+        engine.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(seconds)
     }
 
     public func restorePreferredState() async {

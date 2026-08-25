@@ -80,6 +80,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
+    public var finalizeDelaySeconds: Double
+
+    public static let defaultFinalizeDelaySeconds = 0.4
 
     public static var `default`: AppSettings {
         AppSettings(
@@ -89,7 +92,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             commands: [],
             punctuationModes: [:],
             launchAtLogin: true,
-            preferredListeningState: .off
+            preferredListeningState: .off,
+            finalizeDelaySeconds: defaultFinalizeDelaySeconds
         )
     }
 
@@ -101,6 +105,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case punctuationModes
         case launchAtLogin
         case preferredListeningState
+        case finalizeDelaySeconds
     }
 
     public init(
@@ -110,7 +115,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         commands: [ImportedCommand],
         punctuationModes: [String: PunctuationMode],
         launchAtLogin: Bool,
-        preferredListeningState: ListeningState
+        preferredListeningState: ListeningState,
+        finalizeDelaySeconds: Double
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphoneUID = microphoneUID
@@ -119,6 +125,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.punctuationModes = punctuationModes
         self.launchAtLogin = launchAtLogin
         self.preferredListeningState = preferredListeningState
+        self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
     }
 
     public init(from decoder: Decoder) throws {
@@ -130,6 +137,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         punctuationModes = try container.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         preferredListeningState = try container.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
+        finalizeDelaySeconds = Self.clampedFinalizeDelay(
+            try container.decodeIfPresent(Double.self, forKey: .finalizeDelaySeconds) ?? Self.defaultFinalizeDelaySeconds
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -141,6 +151,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(punctuationModes, forKey: .punctuationModes)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
         try container.encode(preferredListeningState, forKey: .preferredListeningState)
+        try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
+    }
+
+    public static func clampedFinalizeDelay(_ seconds: Double) -> Double {
+        guard seconds.isFinite else { return defaultFinalizeDelaySeconds }
+        return min(max(seconds, 0), 30)
+    }
+
+    public static func finalizeDelayTenths(_ seconds: Double) -> Int? {
+        let scaled = seconds * 10
+        let tenths = Int(scaled.rounded())
+        guard (0...20).contains(tenths), abs(scaled - Double(tenths)) < 0.05 else { return nil }
+        return tenths
     }
 }
 

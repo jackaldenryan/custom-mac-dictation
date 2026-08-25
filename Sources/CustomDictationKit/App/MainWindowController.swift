@@ -69,6 +69,8 @@ private struct AppRootView: View {
     @State private var newShortcut = ""
     @State private var newFilePath = ""
     @State private var newFileBookmark: Data?
+    @State private var customFinalizeText = ""
+    @State private var finalizeUsesCustom = false
 
     var body: some View {
         TabView {
@@ -87,6 +89,7 @@ private struct AppRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             settings = store.settings
+            customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
             mics = AudioCapture.listMicrophones()
             logText = DiagnosticLog.tail()
             accessibilityTrusted = AXIsProcessTrusted()
@@ -160,6 +163,28 @@ private struct AppRootView: View {
                 }
                 Section("Startup") {
                     Toggle("Open at login", isOn: launchBinding)
+                }
+                Section("Finish a phrase after") {
+                    Picker("Silence", selection: finalizeMenuBinding) {
+                        ForEach(0...20, id: \.self) { tenths in
+                            Text(Self.finalizeMenuLabel(tenths: tenths)).tag(FinalizeMenu.tenths(tenths))
+                        }
+                        Text("Custom").tag(FinalizeMenu.custom)
+                    }
+                    if finalizeMenu == .custom {
+                        HStack {
+                            TextField("Seconds", text: $customFinalizeText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 120)
+                                .onSubmit { applyCustomFinalizeDelay() }
+                            Text("seconds")
+                                .foregroundStyle(.secondary)
+                            Button("Apply") { applyCustomFinalizeDelay() }
+                        }
+                    }
+                    Text("How long to wait after you stop talking before the phrase is finished. Longer can keep Apple from adding a second period or question mark.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .formStyle(.grouped)
@@ -366,6 +391,35 @@ private struct AppRootView: View {
         }
     }
 
+    private enum FinalizeMenu: Hashable {
+        case tenths(Int)
+        case custom
+    }
+
+    private var finalizeMenu: FinalizeMenu {
+        if finalizeUsesCustom { return .custom }
+        if let tenths = AppSettings.finalizeDelayTenths(settings.finalizeDelaySeconds) {
+            return .tenths(tenths)
+        }
+        return .custom
+    }
+
+    private var finalizeMenuBinding: Binding<FinalizeMenu> {
+        Binding(
+            get: { finalizeMenu },
+            set: { choice in
+                switch choice {
+                case .tenths(let tenths):
+                    finalizeUsesCustom = false
+                    applyFinalizeDelay(Double(tenths) / 10)
+                case .custom:
+                    finalizeUsesCustom = true
+                    customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
+                }
+            }
+        )
+    }
+
     private var microphoneBinding: Binding<String?> {
         Binding(
             get: { settings.microphoneUID },
@@ -391,6 +445,29 @@ private struct AppRootView: View {
     private func persist() {
         _ = store.update { $0 = settings }
         settings = store.settings
+        session.setFinalizeDelay(settings.finalizeDelaySeconds)
+    }
+
+    private func applyFinalizeDelay(_ seconds: Double) {
+        settings.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(seconds)
+        customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
+        persist()
+    }
+
+    private func applyCustomFinalizeDelay() {
+        let parsed = Double(customFinalizeText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+        applyFinalizeDelay(parsed ?? settings.finalizeDelaySeconds)
+    }
+
+    private static func finalizeMenuLabel(tenths: Int) -> String {
+        if tenths == 0 { return "0 seconds" }
+        if tenths % 10 == 0 { return "\(tenths / 10) seconds" }
+        return String(format: "%.1f seconds", Double(tenths) / 10)
+    }
+
+    private static func finalizeFieldText(_ seconds: Double) -> String {
+        if seconds == floor(seconds) { return String(Int(seconds)) }
+        return String(format: "%g", seconds)
     }
 
     private func addWord() {
