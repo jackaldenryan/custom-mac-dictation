@@ -56,9 +56,12 @@ public enum Router {
             }
             return .handled
         }
-        if normalized.hasPrefix("open ") {
+        if normalized.hasPrefix("open "), !PunctuationPolicy.looksLikePunctuation(normalized) {
             LivePhrase.discard()
             let name = String(normalized.dropFirst(5))
+            guard !PunctuationPolicy.looksLikePunctuation(name) else {
+                return .failed("I could not type that punctuation")
+            }
             do {
                 try AppController.open(spokenName: name)
                 return .handled

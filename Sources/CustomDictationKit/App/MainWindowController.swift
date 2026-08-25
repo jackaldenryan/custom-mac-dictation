@@ -16,19 +16,36 @@ public final class MainWindowController {
         }
         let root = AppRootView(session: session, store: store, updater: updater)
         let hosting = NSHostingController(rootView: root)
+        hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
         window.title = "Custom Dictation"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.collectionBehavior.insert(.fullScreenPrimary)
-        window.setContentSize(NSSize(width: 980, height: 680))
-        window.minSize = NSSize(width: 720, height: 480)
-        window.setFrameAutosaveName("CustomDictation.Main")
+        window.minSize = NSSize(width: 560, height: 360)
+        window.setFrameAutosaveName("CustomDictation.Main.v2")
         window.isRestorable = true
         window.isReleasedWhenClosed = false
-        window.center()
+        if !window.setFrameUsingName("CustomDictation.Main.v2") {
+            window.setContentSize(NSSize(width: 900, height: 620))
+            window.center()
+        }
+        fit(window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         self.window = window
+    }
+
+    private func fit(_ window: NSWindow) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        var frame = window.frame
+        if frame.width > visible.width { frame.size.width = visible.width }
+        if frame.height > visible.height { frame.size.height = visible.height }
+        if frame.minX < visible.minX { frame.origin.x = visible.minX }
+        if frame.minY < visible.minY { frame.origin.y = visible.minY }
+        if frame.maxX > visible.maxX { frame.origin.x = visible.maxX - frame.width }
+        if frame.maxY > visible.maxY { frame.origin.y = visible.maxY - frame.height }
+        window.setFrame(frame, display: true)
     }
 }
 
@@ -69,6 +86,7 @@ private struct AppRootView: View {
     }
 
     private var listenTab: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             Text(statusTitle)
                 .font(.largeTitle.weight(.semibold))
@@ -132,7 +150,8 @@ private struct AppRootView: View {
             .formStyle(.grouped)
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
     }
 
     private var updatesTab: some View {
