@@ -137,7 +137,8 @@ public final class ListeningSession: ObservableObject {
         if TranscriptNormalizer.isLonePunctuation(transcript) {
             lastPartial = ""
             let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard state == .listening, Date().timeIntervalSince(lastTypedAt) >= 1 else { return }
+            let delay = store.settings.lonePunctuationDelaySeconds
+            guard state == .listening, Date().timeIntervalSince(lastTypedAt) >= delay else { return }
             LivePhrase.pendingLeadSpace = false
             LivePhrase.commit(trimmed)
             lastTypedAt = Date()

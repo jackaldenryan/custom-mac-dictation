@@ -3,13 +3,14 @@ import Foundation
 public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
+    nonisolated(unsafe) private static var phraseIsMidSentence = false
 
     public static func show(_ text: String) {
-        apply(spaced(text))
+        apply(shaped(text))
     }
 
     public static func commit(_ text: String) {
-        apply(spaced(text))
+        apply(shaped(text))
         if !displayed.isEmpty { pendingLeadSpace = true }
         displayed = ""
     }
@@ -25,12 +26,19 @@ public enum LivePhrase {
         displayed = ""
     }
 
-    private static func spaced(_ text: String) -> String {
-        guard !text.isEmpty else { return text }
-        if pendingLeadSpace, text.first?.isWhitespace != true {
-            return " " + text
+    private static func shaped(_ text: String) -> String {
+        if displayed.isEmpty {
+            phraseIsMidSentence = !InsertionContext.isSentenceStart()
         }
-        return text
+        var body = text
+        if phraseIsMidSentence {
+            body = SentenceFit.midSentence(text)
+        }
+        guard !body.isEmpty else { return body }
+        if pendingLeadSpace, body.first?.isWhitespace != true {
+            return " " + body
+        }
+        return body
     }
 
     private static func apply(_ text: String) {

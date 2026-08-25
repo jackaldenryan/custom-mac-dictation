@@ -79,6 +79,8 @@ private struct AppRootView: View {
     @State private var finalizeUsesCustom = false
     @State private var customKeyRepeatText = ""
     @State private var keyRepeatUsesCustom = false
+    @State private var customLonePunctText = ""
+    @State private var lonePunctUsesCustom = false
 
     var body: some View {
         TabView {
@@ -208,6 +210,28 @@ private struct AppRootView: View {
                         }
                     }
                     Text("Used when you say “press the page down key five times”. Default is 0.08 seconds.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Section("Lone comma or period after") {
+                    Picker("Pause", selection: lonePunctMenuBinding) {
+                        ForEach([0, 5, 10, 15, 20, 30], id: \.self) { tenths in
+                            Text(Self.finalizeMenuLabel(tenths: tenths)).tag(LonePunctMenu.tenths(tenths))
+                        }
+                        Text("Custom").tag(LonePunctMenu.custom)
+                    }
+                    if lonePunctMenu == .custom {
+                        HStack {
+                            TextField("Seconds", text: $customLonePunctText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 120)
+                                .onSubmit { applyCustomLonePunctDelay() }
+                            Text("seconds")
+                                .foregroundStyle(.secondary)
+                            Button("Apply") { applyCustomLonePunctDelay() }
+                        }
+                    }
+                    Text("A leftover period or question mark right after a phrase is ignored. After this pause, a lone “,” or “.” is typed. Default is 1 second.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -425,6 +449,11 @@ private struct AppRootView: View {
         case custom
     }
 
+    private enum LonePunctMenu: Hashable {
+        case tenths(Int)
+        case custom
+    }
+
     private var finalizeMenu: FinalizeMenu {
         if finalizeUsesCustom { return .custom }
         if let tenths = AppSettings.finalizeDelayTenths(settings.finalizeDelaySeconds) {
@@ -468,7 +497,32 @@ private struct AppRootView: View {
                     applyKeyRepeatDelay(Double(millis) / 1000)
                 case .custom:
                     keyRepeatUsesCustom = true
-                    customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
+            customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
+            customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
+                }
+            }
+        )
+    }
+
+    private var lonePunctMenu: LonePunctMenu {
+        if lonePunctUsesCustom { return .custom }
+        if let tenths = AppSettings.lonePunctuationDelayTenths(settings.lonePunctuationDelaySeconds) {
+            return .tenths(tenths)
+        }
+        return .custom
+    }
+
+    private var lonePunctMenuBinding: Binding<LonePunctMenu> {
+        Binding(
+            get: { lonePunctMenu },
+            set: { choice in
+                switch choice {
+                case .tenths(let tenths):
+                    lonePunctUsesCustom = false
+                    applyLonePunctDelay(Double(tenths) / 10)
+                case .custom:
+                    lonePunctUsesCustom = true
+                    customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
                 }
             }
         )
@@ -528,6 +582,17 @@ private struct AppRootView: View {
     private func applyCustomKeyRepeatDelay() {
         let parsed = Double(customKeyRepeatText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
         applyKeyRepeatDelay(parsed ?? settings.keyRepeatDelaySeconds)
+    }
+
+    private func applyLonePunctDelay(_ seconds: Double) {
+        settings.lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(seconds)
+        customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
+        persist()
+    }
+
+    private func applyCustomLonePunctDelay() {
+        let parsed = Double(customLonePunctText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+        applyLonePunctDelay(parsed ?? settings.lonePunctuationDelaySeconds)
     }
 
     private static func keyRepeatMenuLabel(millis: Int) -> String {
