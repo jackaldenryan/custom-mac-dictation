@@ -8,12 +8,14 @@ public struct VoiceControlImportResult: Sendable {
 public enum VoiceControlImporter {
     public static let vocabularyPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Preferences/com.apple.SpeechRecognitionCore.Vocabulary.plist")
+    public static let commandsPath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Preferences/com.apple.speech.recognition.AppleSpeechRecognition.CustomCommands.plist")
     public static let commandsDomain = "com.apple.speech.recognition.AppleSpeechRecognition.CustomCommands"
     public static let systemWideScope = "com.apple.speech.SystemWideScope"
 
     public static func importFromThisMac() throws -> VoiceControlImportResult {
-        let vocab = try loadVocabulary()
-        let commands = try loadCommands()
+        let vocab = (try? loadVocabulary()) ?? []
+        let commands = (try? loadCommands()) ?? []
         return VoiceControlImportResult(vocabulary: vocab, commands: commands)
     }
 
@@ -33,17 +35,9 @@ public enum VoiceControlImporter {
         }
     }
 
-    public static func loadCommands() throws -> [ImportedCommand] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        process.arguments = ["export", commandsDomain, "-"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    public static func loadCommands(from url: URL = commandsPath) throws -> [ImportedCommand] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        let data = try Data(contentsOf: url)
         guard !data.isEmpty else { return [] }
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
         guard let root = plist as? [String: Any] else { return [] }

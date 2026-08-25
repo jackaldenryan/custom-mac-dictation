@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-public enum ListeningState: String, Sendable {
+public enum ListeningState: String, Codable, Sendable {
     case off
     case suspended
     case listening
@@ -38,7 +38,7 @@ public final class ListeningSession: ObservableObject {
                 DiagnosticLog.line("Session error: \(error.localizedDescription)")
                 self?.lastError = error.localizedDescription
                 self?.onErrorMessage?(error.localizedDescription)
-                self?.setState(.off)
+                self?.setState(.off, persist: false)
             }
         }
     }
@@ -60,35 +60,49 @@ public final class ListeningSession: ObservableObject {
                 commandPhrases: settings.commands.flatMap(\.phrases) + Self.builtInPhrases + AppNameResolver.commandPhrases()
             )
             guard generation == startGeneration else { return }
-            setState(.listening)
+            setState(.listening, persist: true)
             DiagnosticLog.line("Listening")
         } catch {
             DiagnosticLog.line("Start failed: \(error.localizedDescription)")
             lastError = error.localizedDescription
             onErrorMessage?(error.localizedDescription)
-            setState(.off)
+            setState(.off, persist: false)
         }
     }
 
     public func suspend() {
         guard state == .listening else { return }
         LivePhrase.keepAndUnhighlight()
-        setState(.suspended)
+        setState(.suspended, persist: true)
         DiagnosticLog.line("Suspended")
     }
 
     public func resumeFromSuspend() {
         guard state == .suspended else { return }
-        setState(.listening)
+        setState(.listening, persist: true)
         DiagnosticLog.line("Resumed")
     }
 
-    public func stopCompletely() async {
+    public func stopCompletely(persist: Bool = true) async {
         startGeneration += 1
         LivePhrase.keepAndUnhighlight()
         await engine.stop()
-        setState(.off)
+        setState(.off, persist: persist)
         DiagnosticLog.line("Stopped")
+    }
+
+    public func restorePreferredState() async {
+        switch store.settings.preferredListeningState {
+        case .off:
+            return
+        case .listening:
+            await startListening()
+        case .suspended:
+            await startListening()
+            if state == .listening {
+                suspend()
+            }
+        }
     }
 
     private func handlePartial(_ text: String) {
@@ -154,8 +168,11 @@ public final class ListeningSession: ObservableObject {
         return phrases
     }()
 
-    private func setState(_ newState: ListeningState) {
+    private func setState(_ newState: ListeningState, persist: Bool) {
         state = newState
+        if persist {
+            _ = store.update { $0.preferredListeningState = newState }
+        }
         onStateChange?(newState)
     }
 }

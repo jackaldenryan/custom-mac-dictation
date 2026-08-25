@@ -16,6 +16,12 @@ public enum Router {
         onStartListening: () -> Void,
         onStopListening: () -> Void
     ) -> RouteResult {
+        if let character = PunctuationPolicy.matchRawCharacter(transcript) {
+            if state != .listening { return .ignored }
+            LivePhrase.discard()
+            Typist.typeText(DictationSpacing.punctuationToType(character))
+            return .handled
+        }
         let normalized = TranscriptNormalizer.normalize(transcript)
         guard !normalized.isEmpty else { return .ignored }
 
@@ -112,6 +118,7 @@ public enum Router {
         if normalized.hasPrefix("capitalize") || normalized.hasPrefix("uppercase") || normalized.hasPrefix("lowercase") {
             return true
         }
+        if PunctuationPolicy.matchRawCharacter(transcript) != nil { return true }
         if PunctuationPolicy.match(normalized: normalized, modes: settings.punctuationModes) != nil {
             return true
         }

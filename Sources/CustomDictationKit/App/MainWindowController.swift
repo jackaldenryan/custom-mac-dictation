@@ -58,6 +58,16 @@ private struct AppRootView: View {
     @State private var logText = ""
     @State private var scratch = ""
     @State private var accessibilityTrusted = AXIsProcessTrusted()
+    @State private var newWord = ""
+    @State private var newIPA = ""
+    @State private var vocabMessage = ""
+    @State private var importingVoiceControl = false
+    @State private var newPhrase = ""
+    @State private var newCommandKind: CustomCommandKind = .pasteText
+    @State private var newPasteText = ""
+    @State private var newShortcut = ""
+    @State private var newFilePath = ""
+    @State private var newFileBookmark: Data?
 
     var body: some View {
         TabView {
@@ -190,13 +200,94 @@ private struct AppRootView: View {
             Text("\(settings.vocabulary.count) vocabulary entries, \(settings.commands.count) custom commands.")
                 .foregroundStyle(.secondary)
             HStack {
-                Button("Import from Voice Control") { importVoiceControl() }
+                TextField("Word", text: $newWord)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 160)
+                TextField("IPA optional", text: $newIPA)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 140)
+                Button("Add") { addWord() }
+                    .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            HStack {
+                Button(importingVoiceControl ? "Importing…" : "Import from Voice Control") {
+                    importVoiceControl()
+                }
+                .disabled(importingVoiceControl)
                 Button("Export…") { exportJSON() }
                 Button("Import file…") { importJSON() }
             }
-            Spacer(minLength: 0)
+            HStack {
+                TextField("Say this", text: $newPhrase)
+                    .textFieldStyle(.roundedBorder)
+                Picker("Does", selection: $newCommandKind) {
+                    ForEach(CustomCommandKind.allCases) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 130)
+                commandDetailField
+                Button("Add command") { addCommand() }
+                    .disabled(!canAddCommand)
+            }
+            if !vocabMessage.isEmpty {
+                Text(vocabMessage)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            List {
+                Section("Words") {
+                    ForEach(settings.vocabulary) { entry in
+                        HStack {
+                            Text(entry.word)
+                            if !entry.ipa.isEmpty {
+                                Text(entry.ipa.joined(separator: ", "))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Remove") { removeWord(entry) }
+                        }
+                    }
+                }
+                Section("Commands") {
+                    ForEach(settings.commands) { command in
+                        HStack {
+                            Text(command.phrases.joined(separator: ", "))
+                            Text(command.kind.title)
+                                .foregroundStyle(.secondary)
+                            Text(commandSummary(command))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Button("Remove") { removeCommand(command) }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var commandDetailField: some View {
+        switch newCommandKind {
+        case .pasteText:
+            TextField("Text to paste", text: $newPasteText)
+                .textFieldStyle(.roundedBorder)
+        case .shortcut:
+            TextField("command shift s", text: $newShortcut)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140)
+        case .openFile:
+            HStack {
+                Text(newFilePath.isEmpty ? "No file" : (newFilePath as NSString).lastPathComponent)
+                    .foregroundStyle(newFilePath.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                Button("Choose…") { chooseCommandFile() }
+            }
+        }
     }
 
     private var punctuationTab: some View {
@@ -300,15 +391,140 @@ private struct AppRootView: View {
         settings = store.settings
     }
 
+    private func addWord() {
+        let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return }
+        let ipaRaw = newIPA.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ipa = ipaRaw.isEmpty ? [] : [ipaRaw]
+        settings.vocabulary.removeAll { $0.word.caseInsensitiveCompare(word) == .orderedSame }
+        settings.vocabulary.append(VocabEntry(word: word, ipa: ipa))
+        settings.vocabulary.sort { $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending }
+        persist()
+        newWord = ""
+        newIPA = ""
+        vocabMessage = "Added \(word). Restart listening to apply."
+    }
+
+    private func removeWord(_ entry: VocabEntry) {
+        settings.vocabulary.removeAll { $0.id == entry.id }
+        persist()
+        vocabMessage = "Removed \(entry.word)."
+    }
+
+    private var canAddCommand: Bool {
+        let phrase = newPhrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phrase.isEmpty else { return false }
+        switch newCommandKind {
+        case .pasteText:
+            return !newPasteText.isEmpty
+        case .shortcut:
+            return parseShortcut(newShortcut) != nil
+        case .openFile:
+            return !newFilePath.isEmpty
+        }
+    }
+
+    private func addCommand() {
+        let phrase = newPhrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phrase.isEmpty else { return }
+        var command = ImportedCommand(
+            id: "Custom.local.\(UUID().uuidString)",
+            phrases: [phrase],
+            kind: newCommandKind
+        )
+        switch newCommandKind {
+        case .pasteText:
+            command.pasteText = newPasteText
+        case .shortcut:
+            guard let parsed = parseShortcut(newShortcut) else {
+                vocabMessage = "Could not parse that shortcut."
+                return
+            }
+            command.keyCode = Int(parsed.keyCode)
+            command.modifierFlags = nsModifiers(from: parsed.flags)
+        case .openFile:
+            command.filePath = newFilePath
+            command.fileBookmark = newFileBookmark
+        }
+        let newNormalized = command.phrases.map(TranscriptNormalizer.normalize)
+        settings.commands.removeAll { existing in
+            existing.phrases.contains { newNormalized.contains(TranscriptNormalizer.normalize($0)) }
+        }
+        settings.commands.append(command)
+        persist()
+        newPhrase = ""
+        newPasteText = ""
+        newShortcut = ""
+        newFilePath = ""
+        newFileBookmark = nil
+        vocabMessage = "Added command. Restart listening to apply."
+    }
+
+    private func removeCommand(_ command: ImportedCommand) {
+        settings.commands.removeAll { $0.id == command.id }
+        persist()
+        vocabMessage = "Removed command."
+    }
+
+    private func commandSummary(_ command: ImportedCommand) -> String {
+        switch command.kind {
+        case .pasteText:
+            return command.pasteText ?? ""
+        case .shortcut:
+            return command.keyCode.map(String.init) ?? ""
+        case .openFile:
+            return (command.filePath as NSString?)?.lastPathComponent ?? ""
+        }
+    }
+
+    private func chooseCommandFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        newFilePath = url.path
+        newFileBookmark = try? url.bookmarkData(options: .minimalBookmark)
+    }
+
+    private func parseShortcut(_ text: String) -> KeyPressCommand? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = TranscriptNormalizer.normalize(trimmed)
+        let withPress = normalized.hasPrefix("press ") ? normalized : "press \(normalized)"
+        return KeyPressGrammar.parse(withPress)
+    }
+
+    private func nsModifiers(from flags: CGEventFlags) -> UInt64 {
+        var ns: NSEvent.ModifierFlags = []
+        if flags.contains(.maskCommand) { ns.insert(.command) }
+        if flags.contains(.maskShift) { ns.insert(.shift) }
+        if flags.contains(.maskAlternate) { ns.insert(.option) }
+        if flags.contains(.maskControl) { ns.insert(.control) }
+        if flags.contains(.maskSecondaryFn) { ns.insert(.function) }
+        return UInt64(ns.rawValue)
+    }
+
     private func importVoiceControl() {
-        do {
-            let result = try VoiceControlImporter.importFromThisMac()
-            settings.vocabulary = result.vocabulary
-            settings.commands = result.commands
-            persist()
-            updater.message = "Imported \(result.vocabulary.count) words and \(result.commands.count) commands."
-        } catch {
-            updater.message = error.localizedDescription
+        importingVoiceControl = true
+        vocabMessage = "Importing…"
+        Task.detached {
+            do {
+                let result = try VoiceControlImporter.importFromThisMac()
+                await MainActor.run {
+                    let kept = settings.commands.filter { $0.id.hasPrefix("Custom.local.") }
+                    settings.vocabulary = result.vocabulary
+                    settings.commands = kept + result.commands
+                    persist()
+                    importingVoiceControl = false
+                    vocabMessage = "Imported \(result.vocabulary.count) words and \(result.commands.count) commands."
+                }
+            } catch {
+                await MainActor.run {
+                    importingVoiceControl = false
+                    vocabMessage = error.localizedDescription
+                }
+            }
         }
     }
 

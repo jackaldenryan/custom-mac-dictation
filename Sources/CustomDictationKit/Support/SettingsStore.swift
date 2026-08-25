@@ -19,10 +19,20 @@ public struct VocabEntry: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-public enum CustomCommandKind: String, Codable, Sendable {
-    case shortcut
+public enum CustomCommandKind: String, Codable, CaseIterable, Sendable, Identifiable {
     case pasteText
+    case shortcut
     case openFile
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .pasteText: return "Paste text"
+        case .shortcut: return "Shortcut"
+        case .openFile: return "Open file"
+        }
+    }
 }
 
 public struct ImportedCommand: Codable, Equatable, Sendable, Identifiable {
@@ -69,6 +79,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var commands: [ImportedCommand]
     public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
+    public var preferredListeningState: ListeningState
 
     public static var `default`: AppSettings {
         AppSettings(
@@ -77,8 +88,59 @@ public struct AppSettings: Codable, Equatable, Sendable {
             vocabulary: [],
             commands: [],
             punctuationModes: [:],
-            launchAtLogin: true
+            launchAtLogin: true,
+            preferredListeningState: .off
         )
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case hasCompletedOnboarding
+        case microphoneUID
+        case vocabulary
+        case commands
+        case punctuationModes
+        case launchAtLogin
+        case preferredListeningState
+    }
+
+    public init(
+        hasCompletedOnboarding: Bool,
+        microphoneUID: String?,
+        vocabulary: [VocabEntry],
+        commands: [ImportedCommand],
+        punctuationModes: [String: PunctuationMode],
+        launchAtLogin: Bool,
+        preferredListeningState: ListeningState
+    ) {
+        self.hasCompletedOnboarding = hasCompletedOnboarding
+        self.microphoneUID = microphoneUID
+        self.vocabulary = vocabulary
+        self.commands = commands
+        self.punctuationModes = punctuationModes
+        self.launchAtLogin = launchAtLogin
+        self.preferredListeningState = preferredListeningState
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hasCompletedOnboarding = try container.decode(Bool.self, forKey: .hasCompletedOnboarding)
+        microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID)
+        vocabulary = try container.decodeIfPresent([VocabEntry].self, forKey: .vocabulary) ?? []
+        commands = try container.decodeIfPresent([ImportedCommand].self, forKey: .commands) ?? []
+        punctuationModes = try container.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
+        preferredListeningState = try container.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+        try container.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
+        try container.encode(vocabulary, forKey: .vocabulary)
+        try container.encode(commands, forKey: .commands)
+        try container.encode(punctuationModes, forKey: .punctuationModes)
+        try container.encode(launchAtLogin, forKey: .launchAtLogin)
+        try container.encode(preferredListeningState, forKey: .preferredListeningState)
     }
 }
 

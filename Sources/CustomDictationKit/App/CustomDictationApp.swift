@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMainMenu()
         DiagnosticLog.line("Launch version \(AppVersion.current) ax=\(Permissions.accessibilityGranted(prompt: false))")
         sleepObserver.onWillSleep = { [weak self] in
-            Task { await self?.session.stopCompletely() }
+            Task { await self?.session.stopCompletely(persist: false) }
         }
         sleepObserver.start()
 
@@ -39,13 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? SMAppService.mainApp.register()
             }
             Task {
-                await session.startListening()
+                await session.restorePreferredState()
                 await updater.check(interactive: false)
             }
         } else {
             onboarding.show(session: session, store: store) { [weak self] in
                 self?.presentMainInterface()
-                Task { await self?.session.startListening() }
             }
         }
     }

@@ -74,6 +74,12 @@ public enum PunctuationPolicy {
         match(normalized: normalized, modes: [:]) != nil
     }
 
+    public static func matchRawCharacter(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count == 1 else { return nil }
+        return table.contains(where: { $0.character == trimmed }) ? trimmed : nil
+    }
+
     public static func literalWord(_ normalized: String) -> String? {
         let prefix = "the word "
         guard normalized.hasPrefix(prefix) else { return nil }
