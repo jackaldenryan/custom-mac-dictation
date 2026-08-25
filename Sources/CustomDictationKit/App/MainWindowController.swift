@@ -138,8 +138,12 @@ private struct AppRootView: View {
             }
             if !session.lastPartial.isEmpty {
                 Text("Hearing: \(session.lastPartial)")
-                    .foregroundStyle(.secondary)
+                    .underline()
+                    .foregroundStyle(.primary)
                     .lineLimit(3)
+                Text("Still finalizing")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else if !session.lastFinal.isEmpty {
                 Text("Heard: \(session.lastFinal)")
                     .foregroundStyle(.secondary)
