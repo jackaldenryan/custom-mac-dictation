@@ -16,8 +16,8 @@ public enum Router {
         onStartListening: () -> Void,
         onStopListening: () -> Void
     ) -> RouteResult {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
-        guard !normalized.isEmpty else { return .ignored }
 
         if normalized == "start listening mac" {
             LivePhrase.discard()
@@ -83,15 +83,16 @@ public enum Router {
             return transform(.lowercase)
         }
 
-        let typed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        LivePhrase.commit(DictationSpacing.textToType(typed))
+        guard !trimmed.isEmpty else { return .ignored }
+        LivePhrase.commit(DictationSpacing.textToType(trimmed))
         return .typed
     }
 
     public static func shouldHoldLive(transcript: String, state: ListeningState, settings: AppSettings) -> Bool {
         if state != .listening { return true }
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
-        guard !normalized.isEmpty else { return true }
+        if normalized.isEmpty { return trimmed.isEmpty }
         if normalized.hasPrefix("start listening") || normalized.hasPrefix("stop listening") { return true }
         if normalized == "press" || normalized.hasPrefix("press ") { return true }
         if normalized == "open" || normalized.hasPrefix("open ") { return true }

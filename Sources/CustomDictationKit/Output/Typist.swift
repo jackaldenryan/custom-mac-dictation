@@ -56,6 +56,19 @@ public enum Typist {
         pressKey(124, flags: [])
     }
 
+    public static func selectLeftWords(_ words: Int) {
+        guard words > 0 else { return }
+        if !AXIsProcessTrusted() { return }
+        let source = CGEventSource(stateID: .privateState)
+        source?.localEventsSuppressionInterval = 0
+        let flags: CGEventFlags = [.maskShift, .maskAlternate]
+        postModifiers(source: source, flags: flags, keyDown: true)
+        for _ in 0..<words {
+            pressKey(123, flags: flags, source: source)
+        }
+        postModifiers(source: source, flags: flags, keyDown: false)
+    }
+
     public static func pressShortcut(keyCode: Int, modifierFlags: UInt64) {
         press(keyCode: UInt16(keyCode), flags: cgFlags(from: modifierFlags))
     }

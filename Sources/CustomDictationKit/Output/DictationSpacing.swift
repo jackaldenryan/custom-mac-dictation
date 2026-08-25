@@ -4,7 +4,7 @@ public enum DictationSpacing {
     nonisolated(unsafe) public static var pendingLeadingSpace = false
 
     private static let noLeadingSpace: Set<Character> = [
-        ",", ".", "!", "?", ":", ";", ")", "]", "}", "…", "'", "%",
+        ",", ".", "!", "?", ":", ";", ")", "]", "}", "…", "'", "\u{2019}", "\u{2018}", "%",
     ]
 
     public static func reset() {

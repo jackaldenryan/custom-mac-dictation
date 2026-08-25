@@ -38,6 +38,28 @@ expect(Router.shouldHoldLive(transcript: "press return", state: .listening, sett
 expect(!Router.shouldHoldLive(transcript: "hello there", state: .listening, settings: .default), "live hello")
 expect(!Router.shouldHoldLive(transcript: "comma", state: .listening, settings: .default), "live comma words")
 expect(Router.shouldHoldLive(transcript: "press the open parentheses key", state: .listening, settings: .default), "hold press paren")
+expect(!Router.shouldHoldLive(transcript: "(", state: .listening, settings: .default), "live open paren char")
+expect(!Router.shouldHoldLive(transcript: "{", state: .listening, settings: .default), "live open brace char")
+expect(
+    Router.handle(
+        transcript: "(",
+        state: .listening,
+        settings: .default,
+        onStartListening: {},
+        onStopListening: {}
+    ) == .typed,
+    "type open paren char"
+)
+expect(
+    Router.handle(
+        transcript: "]",
+        state: .listening,
+        settings: .default,
+        onStartListening: {},
+        onStopListening: {}
+    ) == .typed,
+    "type close bracket char"
+)
 
 DictationSpacing.reset()
 expect(DictationSpacing.preview("a") == "a", "preview first")
