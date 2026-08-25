@@ -51,12 +51,12 @@ With Cursor holding a long agent conversation, dictate into TextEdit. It should 
 
 ## Menu bar and settings
 
-The menu bar icon is the daily UI.
+The menu bar icon is the app. Closing the window leaves it running there.
 
 - Filled mic: listening
 - Slashed mic: off
 
-**Start Listening** and **Stop Listening** are in that menu, along with the microphone. **Settings** has vocabulary, commands, Voice Control import and export, and **Check for updates**. Apple’s recognizer supplies punctuation. Say a whole phrase like “press the open parentheses key” to type a character by name. Say **quit application** to quit the frontmost app.
+That menu has Start/Stop Listening, microphone, Show Window, Check for updates, and Quit. Say **quit application** while the window or that menu is frontmost to quit this app. Otherwise it quits the frontmost app.
 
 ## Updates
 

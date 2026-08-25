@@ -1,24 +1,36 @@
 import AppKit
 
+public enum StatusMenuState {
+    nonisolated(unsafe) public static var isOpen = false
+}
+
 @MainActor
-public final class StatusItemController: NSObject {
+public final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let session: ListeningSession
     private let store: SettingsStore
+    private let updater: UpdateController
     private let onOpenSettings: () -> Void
     private var flashWork: DispatchWorkItem?
 
-    public init(session: ListeningSession, store: SettingsStore = .shared, onOpenSettings: @escaping () -> Void) {
+    public init(
+        session: ListeningSession,
+        store: SettingsStore = .shared,
+        updater: UpdateController,
+        onOpenSettings: @escaping () -> Void
+    ) {
         self.session = session
         self.store = store
+        self.updater = updater
         self.onOpenSettings = onOpenSettings
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
         item.button?.imagePosition = .imageOnly
-        rebuildMenu()
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
         refreshIcon()
         session.onStateChange = { [weak self] _ in
-            self?.rebuildMenu()
             self?.refreshIcon()
         }
         session.onErrorMessage = { [weak self] _ in
@@ -26,8 +38,8 @@ public final class StatusItemController: NSObject {
         }
     }
 
-    public func rebuildMenu() {
-        let menu = NSMenu()
+    public func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
         let stateItem = NSMenuItem(title: stateTitle, action: nil, keyEquivalent: "")
         stateItem.isEnabled = false
         menu.addItem(stateItem)
@@ -58,8 +70,29 @@ public final class StatusItemController: NSObject {
 
         menu.addItem(.separator())
         menu.addItem(actionItem("Show Window", #selector(openSettings)))
+
+        let check = actionItem(updater.checking ? "Checking for updates…" : "Check for updates", #selector(checkUpdates))
+        check.isEnabled = !updater.checking && !updater.installing
+        menu.addItem(check)
+        if let pending = updater.pending {
+            let install = actionItem(
+                updater.installing ? "Installing update…" : "Install update \(pending.version)",
+                #selector(installUpdate)
+            )
+            install.isEnabled = !updater.installing
+            menu.addItem(install)
+        }
+
+        menu.addItem(.separator())
         menu.addItem(actionItem("Quit Custom Dictation", #selector(quit)))
-        item.menu = menu
+    }
+
+    public func menuWillOpen(_ menu: NSMenu) {
+        StatusMenuState.isOpen = true
+    }
+
+    public func menuDidClose(_ menu: NSMenu) {
+        StatusMenuState.isOpen = false
     }
 
     private var stateTitle: String {
@@ -100,7 +133,6 @@ public final class StatusItemController: NSObject {
         let uid = sender.representedObject as? String
         let value = (uid?.isEmpty == false) ? uid : nil
         _ = store.update { $0.microphoneUID = value }
-        rebuildMenu()
         if session.state == .listening {
             Task { await session.startListening() }
         }
@@ -108,6 +140,14 @@ public final class StatusItemController: NSObject {
 
     @objc private func openSettings() {
         onOpenSettings()
+    }
+
+    @objc private func checkUpdates() {
+        Task { await updater.check(interactive: true) }
+    }
+
+    @objc private func installUpdate() {
+        Task { await updater.installPending() }
     }
 
     @objc private func quit() {

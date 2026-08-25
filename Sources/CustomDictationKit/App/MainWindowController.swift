@@ -5,10 +5,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
-public final class MainWindowController {
+public final class MainWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     public func show(session: ListeningSession, store: SettingsStore, updater: UpdateController) {
+        NSApp.setActivationPolicy(.regular)
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
@@ -30,9 +31,14 @@ public final class MainWindowController {
             window.center()
         }
         fit(window)
+        window.delegate = self
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         self.window = window
+    }
+
+    public func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func fit(_ window: NSWindow) {

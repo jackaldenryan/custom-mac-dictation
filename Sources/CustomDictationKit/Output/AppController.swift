@@ -27,7 +27,7 @@ public enum AppController {
 
     public static func quitFrontmost() throws {
         let selfApp = NSRunningApplication.current
-        if selfApp.isActive {
+        if StatusMenuState.isOpen || selfApp.isActive {
             selfApp.terminate()
             return
         }

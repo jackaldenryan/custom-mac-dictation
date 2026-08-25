@@ -8,7 +8,7 @@ public enum CustomDictationApp {
         let delegate = AppDelegate()
         AppDelegate.retained = delegate
         app.delegate = delegate
-        app.setActivationPolicy(.regular)
+        app.setActivationPolicy(.accessory)
         app.run()
     }
 }
@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sleepObserver.start()
 
         if store.settings.hasCompletedOnboarding {
-            presentMainInterface()
+            presentStatusItem()
             if store.settings.launchAtLogin {
                 try? SMAppService.mainApp.register()
             }
@@ -43,15 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await updater.check(interactive: false)
             }
         } else {
+            NSApp.setActivationPolicy(.regular)
             onboarding.show(session: session, store: store) { [weak self] in
-                self?.presentMainInterface()
+                self?.presentStatusItem()
+                self?.showMainWindow()
             }
         }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if store.settings.hasCompletedOnboarding {
-            presentMainInterface()
+            showMainWindow()
         }
         return true
     }
@@ -85,16 +87,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.windowsMenu = windowMenu
     }
 
-    private func presentMainInterface() {
-        presentStatusItem()
+    private func showMainWindow() {
         mainWindow.show(session: session, store: store, updater: updater)
     }
 
     private func presentStatusItem() {
         guard statusItem == nil else { return }
-        statusItem = StatusItemController(session: session) { [weak self] in
-            guard let self else { return }
-            self.mainWindow.show(session: self.session, store: self.store, updater: self.updater)
+        statusItem = StatusItemController(session: session, updater: updater) { [weak self] in
+            self?.showMainWindow()
         }
     }
 }
