@@ -153,8 +153,6 @@ public enum KeyPressGrammar {
     }
 
     private static let punctuationSpokenNames: [String: String] = [
-        ",": "comma",
-        ".": "period",
         "?": "question mark",
         "!": "exclamation mark",
         ":": "colon",

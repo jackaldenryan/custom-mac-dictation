@@ -21,6 +21,7 @@ public final class ListeningSession: ObservableObject {
     private let store: SettingsStore
     private var startGeneration = 0
     private var lastMicrophoneUID: String?
+    private var lastTypedAt = Date.distantPast
 
     public init(store: SettingsStore = .shared) {
         self.store = store
@@ -135,6 +136,14 @@ public final class ListeningSession: ObservableObject {
     private func handle(transcript: String) {
         if TranscriptNormalizer.isLonePunctuation(transcript) {
             lastPartial = ""
+            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard state == .listening, Date().timeIntervalSince(lastTypedAt) >= 1 else { return }
+            LivePhrase.pendingLeadSpace = false
+            LivePhrase.commit(trimmed)
+            lastTypedAt = Date()
+            lastFinal = trimmed
+            lastRoute = "typed"
+            DiagnosticLog.line("Route typed state=\(state.rawValue) text=\(trimmed) delayed punct")
             return
         }
         lastFinal = transcript
@@ -157,6 +166,7 @@ public final class ListeningSession: ObservableObject {
             playHandledSound(for: transcript)
         case .typed:
             lastRoute = "typed"
+            lastTypedAt = Date()
         case .ignored:
             lastRoute = "ignored"
         case .failed(let message):

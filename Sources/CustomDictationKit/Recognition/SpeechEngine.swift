@@ -123,9 +123,15 @@ public final class SpeechEngine: @unchecked Sendable {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if text.isEmpty || TranscriptNormalizer.isLonePunctuation(text) {
+                    if text.isEmpty {
                         if result.isFinal {
                             self?.onFinalizeIdle?()
+                        }
+                        continue
+                    }
+                    if TranscriptNormalizer.isLonePunctuation(text) {
+                        if result.isFinal {
+                            self?.onFinalTranscript?(text)
                         }
                         continue
                     }

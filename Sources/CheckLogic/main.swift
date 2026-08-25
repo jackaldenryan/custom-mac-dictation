@@ -65,6 +65,8 @@ expect(KeyPressGrammar.parse("press the back tick key")?.flags.isEmpty == true, 
 expect(KeyPressGrammar.parse("press the vertical bar key")?.keyCode == 42, "vertical bar")
 expect(KeyPressGrammar.parse("press the caret key")?.keyCode == 22, "caret")
 expect(KeyPressGrammar.parse("press the number one key")?.keyCode == 18, "number one")
+expect(KeyPressGrammar.parse("Press, the one key.")?.keyCode == 18, "press one with comma")
+expect(KeyPressGrammar.parse("press, the one key")?.keyCode == 18, "press one comma")
 expect(KeyPressGrammar.parse("press ~")?.keyCode == 50, "tilde symbol")
 expect(KeyPressGrammar.parse("press `")?.keyCode == 50, "backtick symbol")
 expect(KeyPressGrammar.parse("press ^")?.keyCode == 22, "caret symbol")
