@@ -19,7 +19,6 @@ public enum LivePhrase {
 
     public static func keepAndUnhighlight() {
         guard !displayed.isEmpty else { return }
-        DictationSpacing.markCommitted(displayed)
         displayed = ""
     }
 

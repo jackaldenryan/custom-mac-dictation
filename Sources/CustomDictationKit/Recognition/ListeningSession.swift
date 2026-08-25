@@ -111,7 +111,7 @@ public final class ListeningSession: ObservableObject {
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
             return
         }
-        LivePhrase.show(DictationSpacing.preview(text))
+        LivePhrase.show(text)
     }
 
     private func handle(transcript: String) {

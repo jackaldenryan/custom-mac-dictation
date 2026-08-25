@@ -10,7 +10,6 @@ func expect(_ condition: Bool, _ message: String) {
 }
 
 SoundFeedback.isEnabled = false
-DictationSpacing.reset()
 
 expect(KeyPressGrammar.parse("shift d") == nil, "press required")
 expect(KeyPressGrammar.parse("press shift d")?.keyCode == 2, "shift d key")
@@ -60,19 +59,5 @@ expect(
     ) == .typed,
     "type close bracket char"
 )
-
-DictationSpacing.reset()
-expect(DictationSpacing.preview("a") == "a", "preview first")
-_ = DictationSpacing.textToType("a")
-expect(DictationSpacing.preview("b") == " b", "preview lead space")
-DictationSpacing.reset()
-expect(DictationSpacing.textToType("a") == "a", "first phrase no lead space")
-expect(DictationSpacing.textToType("b") == " b", "second phrase lead space")
-expect(DictationSpacing.punctuationToType(",") == ",", "comma no lead space")
-expect(DictationSpacing.textToType("c") == " c", "word after comma")
-DictationSpacing.reset()
-_ = DictationSpacing.textToType("hello")
-expect(DictationSpacing.punctuationToType("(") == " (", "open paren lead space")
-expect(DictationSpacing.textToType("world") == "world", "no space after open paren")
 
 print("CheckLogic passed")

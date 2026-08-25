@@ -43,7 +43,6 @@ public enum Router {
         if let key = KeyPressGrammar.parse(normalized) {
             LivePhrase.discard()
             Typist.press(keyCode: key.keyCode, flags: key.flags, character: key.character)
-            DictationSpacing.noteKeyPress(keyCode: key.keyCode)
             return .handled
         }
         if normalized.hasPrefix("open ") {
@@ -84,7 +83,7 @@ public enum Router {
         }
 
         guard !trimmed.isEmpty else { return .ignored }
-        LivePhrase.commit(DictationSpacing.textToType(trimmed))
+        LivePhrase.commit(trimmed)
         return .typed
     }
 
