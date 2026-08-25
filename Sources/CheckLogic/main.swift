@@ -110,6 +110,53 @@ expect(
     ),
     "no space after existing space"
 )
+expect(
+    DefaultPostProcess.apply(
+        PostProcessInput(
+            text: "In.",
+            isPartial: false,
+            pendingLeadSpace: false,
+            lastTypedAge: 5,
+            lonePunctuationDelay: 1,
+            isLonePunctuation: false,
+            midSentence: true,
+            snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false)
+        )
+    ) == "in",
+    "default mid in"
+)
+expect(
+    DefaultPostProcess.apply(
+        PostProcessInput(
+            text: ".",
+            isPartial: false,
+            pendingLeadSpace: false,
+            lastTypedAge: 0.2,
+            lonePunctuationDelay: 1,
+            isLonePunctuation: true,
+            midSentence: false,
+            snapshot: nil
+        )
+    ) == nil,
+    "default drop leftover punct"
+)
+if let js = try? PostProcessor.runJavaScript(
+    DefaultPostProcess.javascriptSource,
+    input: PostProcessInput(
+        text: "In.",
+        isPartial: false,
+        pendingLeadSpace: false,
+        lastTypedAge: 5,
+        lonePunctuationDelay: 1,
+        isLonePunctuation: false,
+        midSentence: true,
+        snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false)
+    )
+) {
+    expect(js == "in", "js default mid in")
+} else {
+    expect(false, "js default mid in ran")
+}
 expect(!AppNameResolver.discoveredApps().isEmpty, "discovers installed apps")
 if let chrome = AppNameResolver.resolve("chrome") {
     expect(chrome.name.lowercased().contains("chrome"), "chrome from installed apps")

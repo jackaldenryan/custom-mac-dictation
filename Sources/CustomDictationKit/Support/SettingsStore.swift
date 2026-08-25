@@ -83,6 +83,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
     public var lonePunctuationDelaySeconds: Double
+    public var postProcessConfigs: [PostProcessConfig]
+    public var activePostProcessID: String
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
@@ -99,7 +101,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
             preferredListeningState: .off,
             finalizeDelaySeconds: defaultFinalizeDelaySeconds,
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
-            lonePunctuationDelaySeconds: defaultLonePunctuationDelaySeconds
+            lonePunctuationDelaySeconds: defaultLonePunctuationDelaySeconds,
+            postProcessConfigs: [.builtInDefault],
+            activePostProcessID: PostProcessConfig.defaultID
         )
     }
 
@@ -114,6 +118,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case finalizeDelaySeconds
         case keyRepeatDelaySeconds
         case lonePunctuationDelaySeconds
+        case postProcessConfigs
+        case activePostProcessID
     }
 
     public init(
@@ -126,7 +132,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         preferredListeningState: ListeningState,
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
-        lonePunctuationDelaySeconds: Double
+        lonePunctuationDelaySeconds: Double,
+        postProcessConfigs: [PostProcessConfig],
+        activePostProcessID: String
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphoneUID = microphoneUID
@@ -138,6 +146,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
         self.lonePunctuationDelaySeconds = Self.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
+        self.postProcessConfigs = postProcessConfigs
+        self.activePostProcessID = activePostProcessID
+        ensurePostProcessDefaults()
     }
 
     public init(from decoder: Decoder) throws {
@@ -158,6 +169,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         lonePunctuationDelaySeconds = Self.clampedLonePunctuationDelay(
             try container.decodeIfPresent(Double.self, forKey: .lonePunctuationDelaySeconds) ?? Self.defaultLonePunctuationDelaySeconds
         )
+        postProcessConfigs = try container.decodeIfPresent([PostProcessConfig].self, forKey: .postProcessConfigs) ?? [.builtInDefault]
+        activePostProcessID = try container.decodeIfPresent(String.self, forKey: .activePostProcessID) ?? PostProcessConfig.defaultID
+        ensurePostProcessDefaults()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -172,6 +186,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
         try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
         try container.encode(lonePunctuationDelaySeconds, forKey: .lonePunctuationDelaySeconds)
+        try container.encode(postProcessConfigs, forKey: .postProcessConfigs)
+        try container.encode(activePostProcessID, forKey: .activePostProcessID)
+    }
+
+    public var activePostProcessConfig: PostProcessConfig {
+        postProcessConfigs.first { $0.id == activePostProcessID } ?? .builtInDefault
+    }
+
+    public mutating func ensurePostProcessDefaults() {
+        if let index = postProcessConfigs.firstIndex(where: { $0.id == PostProcessConfig.defaultID }) {
+            postProcessConfigs[index] = .builtInDefault
+        } else {
+            postProcessConfigs.insert(.builtInDefault, at: 0)
+        }
+        if !postProcessConfigs.contains(where: { $0.id == activePostProcessID }) {
+            activePostProcessID = PostProcessConfig.defaultID
+        }
     }
 
     public static func clampedFinalizeDelay(_ seconds: Double) -> Double {

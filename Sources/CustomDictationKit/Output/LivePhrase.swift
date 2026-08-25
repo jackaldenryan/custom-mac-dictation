@@ -3,17 +3,21 @@ import Foundation
 public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
+    nonisolated(unsafe) public static var lastTypedAt = Date.distantPast
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
 
     public static func show(_ text: String) {
-        apply(shaped(text))
+        guard let out = shaped(text, isPartial: true) else { return }
+        apply(out)
     }
 
     public static func commit(_ text: String) {
-        apply(shaped(text))
+        guard let out = shaped(text, isPartial: false) else { return }
+        apply(out)
         if !displayed.isEmpty { pendingLeadSpace = true }
         displayed = ""
+        lastTypedAt = Date()
     }
 
     public static func discard() {
@@ -27,7 +31,7 @@ public enum LivePhrase {
         displayed = ""
     }
 
-    private static func shaped(_ text: String) -> String {
+    private static func shaped(_ text: String, isPartial: Bool) -> String? {
         if displayed.isEmpty {
             phraseSnapshot = InsertionContext.snapshot()
             if let snap = phraseSnapshot {
@@ -36,15 +40,17 @@ public enum LivePhrase {
                 phraseIsMidSentence = pendingLeadSpace
             }
         }
-        var body = text
-        if phraseIsMidSentence {
-            body = SentenceFit.midSentence(text)
-        }
-        guard !body.isEmpty else { return body }
-        if FieldFit.needsLeadSpace(body, snapshot: phraseSnapshot, pendingLeadSpace: pendingLeadSpace) {
-            return " " + body
-        }
-        return body
+        let input = PostProcessInput(
+            text: text,
+            isPartial: isPartial,
+            pendingLeadSpace: pendingLeadSpace,
+            lastTypedAge: Date().timeIntervalSince(lastTypedAt),
+            lonePunctuationDelay: SettingsStore.shared.settings.lonePunctuationDelaySeconds,
+            isLonePunctuation: TranscriptNormalizer.isLonePunctuation(text),
+            midSentence: phraseIsMidSentence,
+            snapshot: phraseSnapshot
+        )
+        return PostProcessor.process(input, settings: SettingsStore.shared.settings)
     }
 
     private static func apply(_ text: String) {

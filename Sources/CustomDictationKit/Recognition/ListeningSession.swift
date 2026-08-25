@@ -137,11 +137,12 @@ public final class ListeningSession: ObservableObject {
         if TranscriptNormalizer.isLonePunctuation(transcript) {
             lastPartial = ""
             let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            let delay = store.settings.lonePunctuationDelaySeconds
-            guard state == .listening, Date().timeIntervalSince(lastTypedAt) >= delay else { return }
+            guard state == .listening else { return }
+            let before = LivePhrase.lastTypedAt
             LivePhrase.pendingLeadSpace = false
             LivePhrase.commit(trimmed)
-            lastTypedAt = Date()
+            guard LivePhrase.lastTypedAt != before else { return }
+            lastTypedAt = LivePhrase.lastTypedAt
             lastFinal = trimmed
             lastRoute = "typed"
             DiagnosticLog.line("Route typed state=\(state.rawValue) text=\(trimmed) delayed punct")

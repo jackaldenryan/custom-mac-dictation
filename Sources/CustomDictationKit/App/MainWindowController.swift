@@ -81,6 +81,9 @@ private struct AppRootView: View {
     @State private var keyRepeatUsesCustom = false
     @State private var customLonePunctText = ""
     @State private var lonePunctUsesCustom = false
+    @State private var postProcessName = PostProcessConfig.builtInDefault.name
+    @State private var postProcessScript = PostProcessConfig.builtInDefault.script
+    @State private var postProcessMessage = ""
 
     var body: some View {
         TabView {
@@ -90,6 +93,8 @@ private struct AppRootView: View {
                 .tabItem { Label("Vocabulary", systemImage: "text.book.closed") }
             commandsTab
                 .tabItem { Label("Commands", systemImage: "command") }
+            postProcessTab
+                .tabItem { Label("Post-process", systemImage: "function") }
             updatesTab
                 .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
             diagnosticsTab
@@ -241,6 +246,50 @@ private struct AppRootView: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var postProcessTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Post-process")
+                .font(.title2.weight(.semibold))
+            Text("Runs only after a phrase is routed as typed text, not on commands. Default is the built-in rules. Duplicate it to experiment. function process(ctx) must return the string to type, or null to ignore.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Picker("Configuration", selection: postProcessIDBinding) {
+                    ForEach(settings.postProcessConfigs) { config in
+                        Text(config.name).tag(config.id)
+                    }
+                }
+                Button("Duplicate") { duplicatePostProcess() }
+                Button("New") { newPostProcess() }
+                Button("Delete") { deletePostProcess() }
+                    .disabled(settings.activePostProcessConfig.isBuiltInDefault || settings.postProcessConfigs.count < 2)
+            }
+            TextField("Name", text: $postProcessName)
+                .textFieldStyle(.roundedBorder)
+                .disabled(settings.activePostProcessConfig.isBuiltInDefault)
+                .onSubmit { savePostProcessDraft() }
+            TextEditor(text: $postProcessScript)
+                .font(.system(.body, design: .monospaced))
+                .disabled(settings.activePostProcessConfig.isBuiltInDefault)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .border(.separator)
+            HStack {
+                Button("Save") { savePostProcessDraft() }
+                    .disabled(settings.activePostProcessConfig.isBuiltInDefault)
+                if !PostProcessor.lastError.isEmpty {
+                    Text(PostProcessor.lastError)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
+                if !postProcessMessage.isEmpty {
+                    Text(postProcessMessage)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var updatesTab: some View {
@@ -522,7 +571,8 @@ private struct AppRootView: View {
                     applyLonePunctDelay(Double(tenths) / 10)
                 case .custom:
                     lonePunctUsesCustom = true
-                    customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
+            customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
+            loadPostProcessDraft()
                 }
             }
         )
@@ -554,6 +604,73 @@ private struct AppRootView: View {
                 }
             }
         )
+    }
+
+    private var postProcessIDBinding: Binding<String> {
+        Binding(
+            get: { settings.activePostProcessID },
+            set: { id in
+                savePostProcessDraft()
+                settings.activePostProcessID = id
+                persist()
+                loadPostProcessDraft()
+            }
+        )
+    }
+
+    private func loadPostProcessDraft() {
+        let config = settings.activePostProcessConfig
+        postProcessName = config.name
+        postProcessScript = config.script
+        postProcessMessage = config.isBuiltInDefault ? "Built-in Default. Duplicate to edit." : ""
+    }
+
+    private func savePostProcessDraft() {
+        guard !settings.activePostProcessConfig.isBuiltInDefault else { return }
+        let id = settings.activePostProcessID
+        if let index = settings.postProcessConfigs.firstIndex(where: { $0.id == id }) {
+            let name = postProcessName.trimmingCharacters(in: .whitespacesAndNewlines)
+            settings.postProcessConfigs[index].name = name.isEmpty ? "Untitled" : name
+            settings.postProcessConfigs[index].script = postProcessScript
+            persist()
+            postProcessMessage = "Saved."
+        }
+    }
+
+    private func duplicatePostProcess() {
+        savePostProcessDraft()
+        let source = settings.activePostProcessConfig
+        let copy = PostProcessConfig(
+            id: UUID().uuidString,
+            name: source.name == "Default" ? "Default copy" : "\(source.name) copy",
+            script: source.script
+        )
+        settings.postProcessConfigs.append(copy)
+        settings.activePostProcessID = copy.id
+        persist()
+        loadPostProcessDraft()
+    }
+
+    private func newPostProcess() {
+        savePostProcessDraft()
+        let blank = PostProcessConfig(
+            id: UUID().uuidString,
+            name: "New",
+            script: "function process(ctx) {\n  return ctx.text;\n}\n"
+        )
+        settings.postProcessConfigs.append(blank)
+        settings.activePostProcessID = blank.id
+        persist()
+        loadPostProcessDraft()
+    }
+
+    private func deletePostProcess() {
+        let id = settings.activePostProcessID
+        guard id != PostProcessConfig.defaultID else { return }
+        settings.postProcessConfigs.removeAll { $0.id == id }
+        settings.activePostProcessID = PostProcessConfig.defaultID
+        persist()
+        loadPostProcessDraft()
     }
 
     private func persist() {
