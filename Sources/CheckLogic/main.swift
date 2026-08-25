@@ -78,6 +78,38 @@ expect(SentenceFit.midSentence("Working in development.") == "working in develop
 expect(SentenceFit.midSentence("I think") == "I think", "keep pronoun I")
 expect(InsertionContext.leadingCharacterImpliesSentenceStart("Hello. ", utf16Location: 7), "after period")
 expect(!InsertionContext.leadingCharacterImpliesSentenceStart("working ", utf16Location: 8), "mid word")
+expect(
+    !FieldFit.needsLeadSpace(
+        "in",
+        snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false),
+        pendingLeadSpace: true
+    ),
+    "no space when replacing selection"
+)
+expect(
+    !FieldFit.needsLeadSpace(
+        ",",
+        snapshot: CaretSnapshot(before: "t", after: " ", selectedLength: 0, atStart: false),
+        pendingLeadSpace: true
+    ),
+    "no space before comma"
+)
+expect(
+    FieldFit.needsLeadSpace(
+        "in",
+        snapshot: CaretSnapshot(before: "g", after: nil, selectedLength: 0, atStart: false),
+        pendingLeadSpace: false
+    ),
+    "space after a letter"
+)
+expect(
+    !FieldFit.needsLeadSpace(
+        "in",
+        snapshot: CaretSnapshot(before: " ", after: "t", selectedLength: 0, atStart: false),
+        pendingLeadSpace: true
+    ),
+    "no space after existing space"
+)
 expect(!AppNameResolver.discoveredApps().isEmpty, "discovers installed apps")
 if let chrome = AppNameResolver.resolve("chrome") {
     expect(chrome.name.lowercased().contains("chrome"), "chrome from installed apps")

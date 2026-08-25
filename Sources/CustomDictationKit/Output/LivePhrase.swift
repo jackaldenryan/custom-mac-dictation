@@ -4,6 +4,7 @@ public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
     nonisolated(unsafe) private static var phraseIsMidSentence = false
+    nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
 
     public static func show(_ text: String) {
         apply(shaped(text))
@@ -28,14 +29,19 @@ public enum LivePhrase {
 
     private static func shaped(_ text: String) -> String {
         if displayed.isEmpty {
-            phraseIsMidSentence = !InsertionContext.isSentenceStart()
+            phraseSnapshot = InsertionContext.snapshot()
+            if let snap = phraseSnapshot {
+                phraseIsMidSentence = !InsertionContext.impliesSentenceStart(snap)
+            } else {
+                phraseIsMidSentence = pendingLeadSpace
+            }
         }
         var body = text
         if phraseIsMidSentence {
             body = SentenceFit.midSentence(text)
         }
         guard !body.isEmpty else { return body }
-        if pendingLeadSpace, body.first?.isWhitespace != true {
+        if FieldFit.needsLeadSpace(body, snapshot: phraseSnapshot, pendingLeadSpace: pendingLeadSpace) {
             return " " + body
         }
         return body
