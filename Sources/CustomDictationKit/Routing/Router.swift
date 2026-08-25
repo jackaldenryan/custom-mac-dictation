@@ -19,12 +19,12 @@ public enum Router {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
 
-        if normalized == "start listening dictation" {
+        if isStartListening(normalized) {
             LivePhrase.discard()
             if state != .listening { onStartListening() }
             return .handled
         }
-        if normalized == "stop listening dictation" {
+        if isStopListening(normalized) {
             LivePhrase.keepAndUnhighlight()
             if state == .listening { onStopListening() }
             return .handled
@@ -114,6 +114,14 @@ public enum Router {
                 return name.hasPrefix(normalized) && normalized.count >= 3
             }
         }
+    }
+
+    private static func isStartListening(_ normalized: String) -> Bool {
+        normalized == "start listening dictation" || normalized == "start listening mac"
+    }
+
+    private static func isStopListening(_ normalized: String) -> Bool {
+        normalized == "stop listening dictation" || normalized == "stop listening mac"
     }
 
     private static func transform(_ kind: SelectionTransform.Kind) -> RouteResult {

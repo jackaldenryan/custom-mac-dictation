@@ -72,6 +72,10 @@ public final class SpeechEngine: @unchecked Sendable {
         let detector = SpeechDetector(detectionOptions: .init(sensitivityLevel: .medium), reportResults: true)
         let modules: [any SpeechModule] = [detector, transcriber]
 
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: modules) {
+            try await request.downloadAndInstall()
+        }
+
         let context = AnalysisContext()
         let contextual = vocabulary.map(\.word) + commandPhrases
         if !contextual.isEmpty {

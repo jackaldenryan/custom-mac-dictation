@@ -61,12 +61,6 @@ public final class ListeningSession: ObservableObject {
         do {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
-            if engine.isRunning, lastMicrophoneUID == settings.microphoneUID {
-                guard generation == startGeneration else { return }
-                setState(.listening, persist: true)
-                DiagnosticLog.line("Listening (engine already running)")
-                return
-            }
             lastMicrophoneUID = settings.microphoneUID
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
@@ -100,10 +94,8 @@ public final class ListeningSession: ObservableObject {
     public func stopCompletely(persist: Bool = true) async {
         startGeneration += 1
         LivePhrase.keepAndUnhighlight()
-        if persist == false {
-            await engine.stop()
-            lastMicrophoneUID = nil
-        }
+        await engine.stop()
+        lastMicrophoneUID = nil
         setState(.off, persist: persist)
         DiagnosticLog.line("Stopped")
     }
@@ -119,7 +111,7 @@ public final class ListeningSession: ObservableObject {
         case .listening:
             await startListening()
         case .suspended:
-            return
+            await startListening()
         }
     }
 
@@ -178,9 +170,9 @@ public final class ListeningSession: ObservableObject {
 
     private func playHandledSound(for transcript: String) {
         switch TranscriptNormalizer.normalize(transcript) {
-        case "start listening dictation":
+        case "start listening dictation", "start listening mac":
             SoundFeedback.playStart()
-        case "stop listening dictation":
+        case "stop listening dictation", "stop listening mac":
             SoundFeedback.playStop()
         default:
             SoundFeedback.playCommand()
@@ -191,6 +183,8 @@ public final class ListeningSession: ObservableObject {
         var phrases = [
             "start listening dictation",
             "stop listening dictation",
+            "start listening Mac",
+            "stop listening Mac",
             "press",
             "open",
             "quit",
