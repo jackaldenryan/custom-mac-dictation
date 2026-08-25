@@ -13,9 +13,9 @@ public enum TranscriptNormalizer {
         return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    public static func isPunctuationOnly(_ text: String) -> Bool {
+    public static func isLonePunctuation(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        return trimmed.unicodeScalars.allSatisfy { CharacterSet.punctuationCharacters.contains($0) }
+        guard trimmed.count == 1, let scalar = trimmed.unicodeScalars.first else { return false }
+        return CharacterSet.punctuationCharacters.contains(scalar)
     }
 }

@@ -9,6 +9,13 @@ public enum LanguageModelBuilder {
     ) async throws -> SFSpeechLanguageModel.Configuration? {
         guard !vocabulary.isEmpty || !phrases.isEmpty else { return nil }
 
+        let signature = vocabulary.map { "\($0.word)|\($0.ipa.joined(separator: ","))" }.joined(separator: ";")
+            + "\n" + phrases.joined(separator: "\n")
+            + "\n" + AppVersion.current
+        if signature == cachedSignature {
+            return cachedConfiguration
+        }
+
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("CustomDictation/LanguageModel", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -46,6 +53,11 @@ public enum LanguageModelBuilder {
                 }
             }
         }
+        cachedSignature = signature
+        cachedConfiguration = configuration
         return configuration
     }
+
+    nonisolated(unsafe) private static var cachedSignature: String?
+    nonisolated(unsafe) private static var cachedConfiguration: SFSpeechLanguageModel.Configuration?
 }

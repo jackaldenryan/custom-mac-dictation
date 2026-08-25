@@ -20,6 +20,7 @@ public final class ListeningSession: ObservableObject {
     private let engine = SpeechEngine()
     private let store: SettingsStore
     private var startGeneration = 0
+    private var lastMicrophoneUID: String?
 
     public init(store: SettingsStore = .shared) {
         self.store = store
@@ -60,6 +61,13 @@ public final class ListeningSession: ObservableObject {
         do {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
+            if engine.isRunning, lastMicrophoneUID == settings.microphoneUID {
+                guard generation == startGeneration else { return }
+                setState(.listening, persist: true)
+                DiagnosticLog.line("Listening (engine already running)")
+                return
+            }
+            lastMicrophoneUID = settings.microphoneUID
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
                 vocabulary: settings.vocabulary,
@@ -92,7 +100,10 @@ public final class ListeningSession: ObservableObject {
     public func stopCompletely(persist: Bool = true) async {
         startGeneration += 1
         LivePhrase.keepAndUnhighlight()
-        await engine.stop()
+        if persist == false {
+            await engine.stop()
+            lastMicrophoneUID = nil
+        }
         setState(.off, persist: persist)
         DiagnosticLog.line("Stopped")
     }
@@ -108,15 +119,12 @@ public final class ListeningSession: ObservableObject {
         case .listening:
             await startListening()
         case .suspended:
-            await startListening()
-            if state == .listening {
-                suspend()
-            }
+            return
         }
     }
 
     private func handlePartial(_ text: String) {
-        if TranscriptNormalizer.isPunctuationOnly(text) {
+        if TranscriptNormalizer.isLonePunctuation(text) {
             lastPartial = ""
             return
         }
@@ -133,7 +141,7 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handle(transcript: String) {
-        if TranscriptNormalizer.isPunctuationOnly(transcript) {
+        if TranscriptNormalizer.isLonePunctuation(transcript) {
             lastPartial = ""
             return
         }
@@ -144,8 +152,12 @@ public final class ListeningSession: ObservableObject {
             transcript: transcript,
             state: state,
             settings: settings,
-            onStartListening: { [weak self] in self?.resumeFromSuspend() },
-            onStopListening: { [weak self] in self?.suspend() }
+            onStartListening: { [weak self] in
+                Task { await self?.startListening() }
+            },
+            onStopListening: { [weak self] in
+                Task { await self?.stopCompletely() }
+            }
         )
         switch result {
         case .handled:
@@ -166,9 +178,9 @@ public final class ListeningSession: ObservableObject {
 
     private func playHandledSound(for transcript: String) {
         switch TranscriptNormalizer.normalize(transcript) {
-        case "start listening mac":
+        case "start listening dictation":
             SoundFeedback.playStart()
-        case "stop listening mac":
+        case "stop listening dictation":
             SoundFeedback.playStop()
         default:
             SoundFeedback.playCommand()
@@ -177,11 +189,12 @@ public final class ListeningSession: ObservableObject {
 
     private static let builtInPhrases: [String] = {
         var phrases = [
-            "start listening Mac",
-            "stop listening Mac",
+            "start listening dictation",
+            "stop listening dictation",
             "press",
             "open",
             "quit",
+            "quit application",
             "capitalize that",
             "uppercase that",
             "lowercase that"

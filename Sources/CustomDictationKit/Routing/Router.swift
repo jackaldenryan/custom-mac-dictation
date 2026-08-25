@@ -19,23 +19,19 @@ public enum Router {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
 
-        if normalized == "start listening mac" {
+        if normalized == "start listening dictation" {
             LivePhrase.discard()
-            if state == .suspended { onStartListening() }
+            if state != .listening { onStartListening() }
             return .handled
         }
-        if state == .suspended {
-            return .ignored
-        }
-        if normalized == "stop listening mac" {
+        if normalized == "stop listening dictation" {
             LivePhrase.keepAndUnhighlight()
-            onStopListening()
+            if state == .listening { onStopListening() }
             return .handled
         }
         if state != .listening {
             return .ignored
         }
-
         if let imported = matchImported(normalized: normalized, settings: settings) {
             LivePhrase.discard()
             return runImported(imported)
@@ -55,6 +51,15 @@ public enum Router {
                 return .failed("I could not find \(name)")
             } catch {
                 return .failed("I could not open \(name)")
+            }
+        }
+        if normalized == "quit application" || normalized == "quit the application" || normalized == "quit app" {
+            LivePhrase.discard()
+            do {
+                try AppController.quitFrontmost()
+                return .handled
+            } catch {
+                return .failed("I could not quit that application")
             }
         }
         if normalized.hasPrefix("quit ") {
@@ -82,7 +87,7 @@ public enum Router {
             return transform(.lowercase)
         }
 
-        guard !trimmed.isEmpty, !TranscriptNormalizer.isPunctuationOnly(trimmed) else { return .ignored }
+        guard !trimmed.isEmpty, !TranscriptNormalizer.isLonePunctuation(trimmed) else { return .ignored }
         LivePhrase.commit(trimmed)
         return .typed
     }

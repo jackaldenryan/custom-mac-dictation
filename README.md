@@ -37,8 +37,8 @@ Voice Control import is optional and lives in Settings. Skip it until basic dict
 Open TextEdit, click in the window, and speak.
 
 - Dictate a sentence. Text should appear in TextEdit.
-- Say **stop listening Mac**. Further speech should do nothing.
-- Say **start listening Mac**. Dictation should resume.
+- Say **stop listening dictation**. Further speech should do nothing.
+- Say **start listening dictation**. Dictation should resume.
 - Say **press return**. That should press Return.
 - Say **open Safari**, then **quit Safari**.
 - Select a word, say **uppercase that**. If nothing is selected, it should say so.
@@ -54,10 +54,9 @@ With Cursor holding a long agent conversation, dictate into TextEdit. It should 
 The menu bar icon is the daily UI.
 
 - Filled mic: listening
-- Pause: suspended by voice
 - Slashed mic: off
 
-**Start Listening** and **Stop Listening** are in that menu. **Settings** has the microphone, vocabulary, commands, Voice Control import and export, and **Check for updates**. Apple’s recognizer supplies punctuation. Say a whole phrase like “press the open parentheses key” to type a character by name.
+**Start Listening** and **Stop Listening** are in that menu, along with the microphone. **Settings** has vocabulary, commands, Voice Control import and export, and **Check for updates**. Apple’s recognizer supplies punctuation. Say a whole phrase like “press the open parentheses key” to type a character by name. Say **quit application** to quit the frontmost app.
 
 ## Updates
 

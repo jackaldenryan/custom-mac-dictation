@@ -118,20 +118,15 @@ private struct AppRootView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                if session.state == .off {
+                if session.state == .listening {
+                    Button("Stop Listening") {
+                        Task { await session.stopCompletely() }
+                    }
+                } else {
                     Button("Start Listening") {
                         Task { await session.startListening() }
                     }
                     .keyboardShortcut(.defaultAction)
-                } else {
-                    Button("Stop Listening") {
-                        Task { await session.stopCompletely() }
-                    }
-                    if session.state == .listening {
-                        Button("Pause") { session.suspend() }
-                    } else if session.state == .suspended {
-                        Button("Resume") { session.resumeFromSuspend() }
-                    }
                 }
             }
             GroupBox("Try it here") {
@@ -374,8 +369,7 @@ private struct AppRootView: View {
 
     private var statusTitle: String {
         switch session.state {
-        case .off: return "Listening is off"
-        case .suspended: return "Listening is paused"
+        case .off, .suspended: return "Listening is off"
         case .listening: return "Listening"
         }
     }
@@ -385,9 +379,9 @@ private struct AppRootView: View {
         case .off:
             return "The microphone is off. Start listening, click the box below or another app, then speak."
         case .suspended:
-            return "Say “start listening Mac” or click Resume."
+            return "Start listening, click the box below or another app, then speak."
         case .listening:
-            return "Click the box below or another app, then speak. Say “stop listening Mac” to pause."
+            return "Click the box below or another app, then speak. Say “stop listening dictation” to stop."
         }
     }
 
@@ -423,7 +417,13 @@ private struct AppRootView: View {
     private var microphoneBinding: Binding<String?> {
         Binding(
             get: { settings.microphoneUID },
-            set: { settings.microphoneUID = $0; persist() }
+            set: { uid in
+                settings.microphoneUID = uid
+                persist()
+                if session.state == .listening {
+                    Task { await session.startListening() }
+                }
+            }
         )
     }
 

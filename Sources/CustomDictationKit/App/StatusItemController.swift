@@ -4,11 +4,13 @@ import AppKit
 public final class StatusItemController: NSObject {
     private let item: NSStatusItem
     private let session: ListeningSession
+    private let store: SettingsStore
     private let onOpenSettings: () -> Void
     private var flashWork: DispatchWorkItem?
 
-    public init(session: ListeningSession, onOpenSettings: @escaping () -> Void) {
+    public init(session: ListeningSession, store: SettingsStore = .shared, onOpenSettings: @escaping () -> Void) {
         self.session = session
+        self.store = store
         self.onOpenSettings = onOpenSettings
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
@@ -31,16 +33,28 @@ public final class StatusItemController: NSObject {
         menu.addItem(stateItem)
         menu.addItem(.separator())
 
-        if session.state == .off {
-            menu.addItem(actionItem("Start Listening", #selector(startListening)))
-        } else {
-            menu.addItem(actionItem("Stop Listening", #selector(stopListening)))
-        }
         if session.state == .listening {
-            menu.addItem(actionItem("Suspend", #selector(suspend)))
-        } else if session.state == .suspended {
-            menu.addItem(actionItem("Resume Listening", #selector(startListening)))
+            menu.addItem(actionItem("Stop Listening", #selector(stopListening)))
+        } else {
+            menu.addItem(actionItem("Start Listening", #selector(startListening)))
         }
+
+        let micMenu = NSMenu()
+        let defaultItem = NSMenuItem(title: "System default", action: #selector(chooseMicrophone(_:)), keyEquivalent: "")
+        defaultItem.target = self
+        defaultItem.representedObject = ""
+        if store.settings.microphoneUID == nil { defaultItem.state = .on }
+        micMenu.addItem(defaultItem)
+        for mic in AudioCapture.listMicrophones() {
+            let item = NSMenuItem(title: mic.name, action: #selector(chooseMicrophone(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mic.uid
+            if store.settings.microphoneUID == mic.uid { item.state = .on }
+            micMenu.addItem(item)
+        }
+        let micRoot = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
+        micRoot.submenu = micMenu
+        menu.addItem(micRoot)
 
         menu.addItem(.separator())
         menu.addItem(actionItem("Show Window", #selector(openSettings)))
@@ -50,8 +64,7 @@ public final class StatusItemController: NSObject {
 
     private var stateTitle: String {
         switch session.state {
-        case .off: return "Listening is off"
-        case .suspended: return "Listening is paused"
+        case .off, .suspended: return "Listening is off"
         case .listening: return "Listening"
         }
     }
@@ -63,12 +76,7 @@ public final class StatusItemController: NSObject {
     }
 
     private func refreshIcon() {
-        let name: String
-        switch session.state {
-        case .off: name = "mic.slash"
-        case .suspended: name = "pause.circle"
-        case .listening: name = "mic.fill"
-        }
+        let name = session.state == .listening ? "mic.fill" : "mic.slash"
         item.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: stateTitle)
     }
 
@@ -88,8 +96,14 @@ public final class StatusItemController: NSObject {
         Task { await session.stopCompletely() }
     }
 
-    @objc private func suspend() {
-        session.suspend()
+    @objc private func chooseMicrophone(_ sender: NSMenuItem) {
+        let uid = sender.representedObject as? String
+        let value = (uid?.isEmpty == false) ? uid : nil
+        _ = store.update { $0.microphoneUID = value }
+        rebuildMenu()
+        if session.state == .listening {
+            Task { await session.startListening() }
+        }
     }
 
     @objc private func openSettings() {

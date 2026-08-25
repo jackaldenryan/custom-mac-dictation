@@ -25,6 +25,7 @@ public final class SpeechEngine: @unchecked Sendable {
     private var pendingFinalize = false
     private var bufferCount = 0
     public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
+    public var isRunning: Bool { analyzer != nil }
 
     public init() {}
 
@@ -70,10 +71,6 @@ public final class SpeechEngine: @unchecked Sendable {
         )
         let detector = SpeechDetector(detectionOptions: .init(sensitivityLevel: .medium), reportResults: true)
         let modules: [any SpeechModule] = [detector, transcriber]
-
-        if let request = try await AssetInventory.assetInstallationRequest(supporting: modules) {
-            try await request.downloadAndInstall()
-        }
 
         let context = AnalysisContext()
         let contextual = vocabulary.map(\.word) + commandPhrases
@@ -122,7 +119,7 @@ public final class SpeechEngine: @unchecked Sendable {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if text.isEmpty || TranscriptNormalizer.isPunctuationOnly(text) {
+                    if text.isEmpty || TranscriptNormalizer.isLonePunctuation(text) {
                         if result.isFinal {
                             self?.onFinalizeIdle?()
                         }
