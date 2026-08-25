@@ -36,9 +36,9 @@ public enum Router {
             LivePhrase.discard()
             return runImported(imported)
         }
-        if let key = KeyPressGrammar.parse(normalized) {
+        if let key = KeyPressGrammar.parse(transcript) {
             LivePhrase.discard()
-            Typist.press(keyCode: key.keyCode, flags: key.flags, character: key.character)
+            Typist.press(keyCode: key.keyCode, flags: key.flags, character: key.character, times: key.times)
             return .handled
         }
         if normalized.hasPrefix("open ") {

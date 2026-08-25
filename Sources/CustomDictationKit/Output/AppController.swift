@@ -26,15 +26,16 @@ public enum AppController {
     }
 
     public static func quitFrontmost() throws {
-        let selfID = Bundle.main.bundleIdentifier
-        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != selfID {
-            front.terminate()
+        let selfApp = NSRunningApplication.current
+        if selfApp.isActive {
+            selfApp.terminate()
             return
         }
-        let other = NSWorkspace.shared.runningApplications.first {
-            $0.bundleIdentifier != selfID && $0.activationPolicy == .regular && !$0.isHidden
+        guard let front = NSWorkspace.shared.frontmostApplication else { throw AppControlError.notFound }
+        if front.processIdentifier == selfApp.processIdentifier {
+            selfApp.terminate()
+            return
         }
-        guard let other else { throw AppControlError.notFound }
-        other.terminate()
+        front.terminate()
     }
 }

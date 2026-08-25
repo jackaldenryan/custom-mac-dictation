@@ -24,15 +24,18 @@ public enum Typist {
         DiagnosticLog.line("Typed \(posted) utf16 into \(frontAppName())")
     }
 
-    public static func press(keyCode: UInt16, flags: CGEventFlags, character: String? = nil) {
+    public static func press(keyCode: UInt16, flags: CGEventFlags, character: String? = nil, times: Int = 1) {
         if !AXIsProcessTrusted() {
             DiagnosticLog.line("Key skipped; Accessibility not granted")
             return
         }
+        let repeats = min(75, max(1, times))
         let source = CGEventSource(stateID: .privateState)
         source?.localEventsSuppressionInterval = 0
         postModifiers(source: source, flags: flags, keyDown: true)
-        pressKey(keyCode, flags: flags, source: source, character: flags.isEmpty ? character : nil)
+        for _ in 0..<repeats {
+            pressKey(keyCode, flags: flags, source: source, character: flags.isEmpty ? character : nil)
+        }
         postModifiers(source: source, flags: flags, keyDown: false)
         if flags.contains(.maskShift) {
             clearUnintendedCapsLock()
