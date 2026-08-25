@@ -183,9 +183,14 @@ public enum KeyPressGrammar {
         "#": "hash",
         "@": "at sign",
         "~": "tilde",
+        "˜": "tilde",
+        "～": "tilde",
         "`": "backtick",
+        "´": "backtick",
         "^": "caret",
+        "ˆ": "caret",
         "|": "pipe",
+        "¦": "pipe",
         "<": "open angle bracket",
         ">": "close angle bracket"
     ]
@@ -218,7 +223,7 @@ public enum KeyPressGrammar {
         add(["backslash"], Spec(code: 42))
         add(["minus", "minus sign", "dash", "hyphen"], Spec(code: 27))
         add(["equals", "equal", "equal sign", "equals sign"], Spec(code: 24))
-        add(["grave", "grave accent", "backtick", "back tick"], Spec(code: 50))
+        add(["grave", "grave accent", "backtick", "back tick", "back quote", "backquote"], Spec(code: 50))
         add(["semicolon"], Spec(code: 41))
         add(["apostrophe", "single quote"], Spec(code: 39))
 
@@ -241,13 +246,25 @@ public enum KeyPressGrammar {
         add(["dollar", "dollar sign"], Spec(code: 21, flags: .maskShift))
         add(["hash", "pound", "pound sign", "number sign", "hashtag"], Spec(code: 20, flags: .maskShift))
         add(["at sign", "at symbol", "at"], Spec(code: 19, flags: .maskShift))
-        add(["tilde"], Spec(code: 50, flags: .maskShift))
-        add(["caret", "circumflex"], Spec(code: 22, flags: .maskShift))
-        add(["pipe", "vertical bar", "bar"], Spec(code: 42, flags: .maskShift))
+        add(["tilde", "tilda", "squiggle", "wave"], Spec(code: 50, flags: .maskShift))
+        add(["caret", "carat", "carrot", "circumflex", "hat"], Spec(code: 22, flags: .maskShift))
+        add(["pipe", "vertical bar", "vertical line", "bar"], Spec(code: 42, flags: .maskShift))
         add(["open angle bracket", "left angle bracket", "angle bracket", "less than"], Spec(code: 43, flags: .maskShift))
         add(["close angle bracket", "right angle bracket", "greater than"], Spec(code: 47, flags: .maskShift))
 
         add(["ellipsis", "dot dot dot"], Spec(code: 0, character: "…"))
+
+        let numberNames = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+        let numberCodes: [UInt16] = [29, 18, 19, 20, 21, 23, 22, 26, 28, 25]
+        for i in 0...9 {
+            add([
+                "number \(numberNames[i])",
+                "number \(i)",
+                "numeral \(numberNames[i])",
+                "digit \(numberNames[i])",
+                "digit \(i)"
+            ], Spec(code: numberCodes[i]))
+        }
         return map
     }()
 

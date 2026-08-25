@@ -38,7 +38,13 @@ public enum Router {
         }
         if let key = KeyPressGrammar.parse(transcript) {
             LivePhrase.discard()
-            Typist.press(keyCode: key.keyCode, flags: key.flags, character: key.character, times: key.times)
+            Typist.press(
+                keyCode: key.keyCode,
+                flags: key.flags,
+                character: key.character,
+                times: key.times,
+                intervalSeconds: settings.keyRepeatDelaySeconds
+            )
             return .handled
         }
         if normalized.hasPrefix("open ") {
@@ -74,15 +80,15 @@ public enum Router {
                 return .failed("I could not quit \(name)")
             }
         }
-        if normalized == "capitalize that" {
+        if isCapitalize(normalized) {
             LivePhrase.discard()
             return transform(.capitalize)
         }
-        if normalized == "uppercase that" {
+        if isUppercase(normalized) {
             LivePhrase.discard()
             return transform(.uppercase)
         }
-        if normalized == "lowercase that" {
+        if isLowercase(normalized) {
             LivePhrase.discard()
             return transform(.lowercase)
         }
@@ -101,7 +107,7 @@ public enum Router {
         if normalized == "press" || normalized.hasPrefix("press ") { return true }
         if normalized == "open" || normalized.hasPrefix("open ") { return true }
         if normalized == "quit" || normalized.hasPrefix("quit ") { return true }
-        if normalized.hasPrefix("capitalize") || normalized.hasPrefix("uppercase") || normalized.hasPrefix("lowercase") {
+        if isTransformPrefix(normalized) {
             return true
         }
         if matchImported(normalized: normalized, settings: settings) != nil {
@@ -114,6 +120,25 @@ public enum Router {
                 return name.hasPrefix(normalized) && normalized.count >= 3
             }
         }
+    }
+
+    private static func isCapitalize(_ normalized: String) -> Bool {
+        normalized == "capitalize that" || normalized == "capital that" || normalized == "capitalise that"
+    }
+
+    private static func isUppercase(_ normalized: String) -> Bool {
+        normalized == "uppercase that" || normalized == "upper case that" || normalized == "all caps that"
+    }
+
+    private static func isLowercase(_ normalized: String) -> Bool {
+        normalized == "lowercase that" || normalized == "lower case that" || normalized == "all lowercase that"
+    }
+
+    private static func isTransformPrefix(_ normalized: String) -> Bool {
+        normalized == "upper" || normalized.hasPrefix("upper ") || normalized.hasPrefix("uppercase")
+            || normalized == "lower" || normalized.hasPrefix("lower ") || normalized.hasPrefix("lowercase")
+            || normalized == "capital" || normalized.hasPrefix("capital")
+            || normalized.hasPrefix("all caps") || normalized.hasPrefix("all lowercase")
     }
 
     private static func isStartListening(_ normalized: String) -> Bool {

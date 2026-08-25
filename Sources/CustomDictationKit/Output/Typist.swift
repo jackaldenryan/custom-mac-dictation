@@ -24,16 +24,26 @@ public enum Typist {
         DiagnosticLog.line("Typed \(posted) utf16 into \(frontAppName())")
     }
 
-    public static func press(keyCode: UInt16, flags: CGEventFlags, character: String? = nil, times: Int = 1) {
+    public static func press(
+        keyCode: UInt16,
+        flags: CGEventFlags,
+        character: String? = nil,
+        times: Int = 1,
+        intervalSeconds: Double = AppSettings.defaultKeyRepeatDelaySeconds
+    ) {
         if !AXIsProcessTrusted() {
             DiagnosticLog.line("Key skipped; Accessibility not granted")
             return
         }
         let repeats = min(75, max(1, times))
+        let gap = AppSettings.clampedKeyRepeatDelay(intervalSeconds)
         let source = CGEventSource(stateID: .privateState)
         source?.localEventsSuppressionInterval = 0
         postModifiers(source: source, flags: flags, keyDown: true)
-        for _ in 0..<repeats {
+        for index in 0..<repeats {
+            if index > 0, gap > 0 {
+                Thread.sleep(forTimeInterval: gap)
+            }
             pressKey(keyCode, flags: flags, source: source, character: flags.isEmpty ? character : nil)
         }
         postModifiers(source: source, flags: flags, keyDown: false)

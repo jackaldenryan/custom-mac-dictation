@@ -81,8 +81,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
     public var finalizeDelaySeconds: Double
+    public var keyRepeatDelaySeconds: Double
 
     public static let defaultFinalizeDelaySeconds = 0.4
+    public static let defaultKeyRepeatDelaySeconds = 0.08
 
     public static var `default`: AppSettings {
         AppSettings(
@@ -93,7 +95,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             punctuationModes: [:],
             launchAtLogin: true,
             preferredListeningState: .off,
-            finalizeDelaySeconds: defaultFinalizeDelaySeconds
+            finalizeDelaySeconds: defaultFinalizeDelaySeconds,
+            keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds
         )
     }
 
@@ -106,6 +109,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case launchAtLogin
         case preferredListeningState
         case finalizeDelaySeconds
+        case keyRepeatDelaySeconds
     }
 
     public init(
@@ -116,7 +120,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         punctuationModes: [String: PunctuationMode],
         launchAtLogin: Bool,
         preferredListeningState: ListeningState,
-        finalizeDelaySeconds: Double
+        finalizeDelaySeconds: Double,
+        keyRepeatDelaySeconds: Double
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphoneUID = microphoneUID
@@ -126,6 +131,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.launchAtLogin = launchAtLogin
         self.preferredListeningState = preferredListeningState
         self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
+        self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
     }
 
     public init(from decoder: Decoder) throws {
@@ -140,6 +146,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         finalizeDelaySeconds = Self.clampedFinalizeDelay(
             try container.decodeIfPresent(Double.self, forKey: .finalizeDelaySeconds) ?? Self.defaultFinalizeDelaySeconds
         )
+        keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(
+            try container.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? Self.defaultKeyRepeatDelaySeconds
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -152,11 +161,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
         try container.encode(preferredListeningState, forKey: .preferredListeningState)
         try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
+        try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
     }
 
     public static func clampedFinalizeDelay(_ seconds: Double) -> Double {
         guard seconds.isFinite else { return defaultFinalizeDelaySeconds }
         return min(max(seconds, 0), 30)
+    }
+
+    public static func clampedKeyRepeatDelay(_ seconds: Double) -> Double {
+        guard seconds.isFinite else { return defaultKeyRepeatDelaySeconds }
+        return min(max(seconds, 0), 2)
+    }
+
+    public static func keyRepeatDelayMillis(_ seconds: Double) -> Int? {
+        let millis = Int((seconds * 1000).rounded())
+        let allowed: Set<Int> = [0, 40, 80, 120, 160, 200, 300, 500]
+        return allowed.contains(millis) ? millis : nil
     }
 
     public static func finalizeDelayTenths(_ seconds: Double) -> Int? {

@@ -77,6 +77,8 @@ private struct AppRootView: View {
     @State private var newFileBookmark: Data?
     @State private var customFinalizeText = ""
     @State private var finalizeUsesCustom = false
+    @State private var customKeyRepeatText = ""
+    @State private var keyRepeatUsesCustom = false
 
     var body: some View {
         TabView {
@@ -184,6 +186,28 @@ private struct AppRootView: View {
                         }
                     }
                     Text("How long to wait after you stop talking before the phrase is finished. Longer can keep Apple from adding a second period or question mark.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Section("Pause between repeated keys") {
+                    Picker("Delay", selection: keyRepeatMenuBinding) {
+                        ForEach([0, 40, 80, 120, 160, 200, 300, 500], id: \.self) { millis in
+                            Text(Self.keyRepeatMenuLabel(millis: millis)).tag(KeyRepeatMenu.millis(millis))
+                        }
+                        Text("Custom").tag(KeyRepeatMenu.custom)
+                    }
+                    if keyRepeatMenu == .custom {
+                        HStack {
+                            TextField("Seconds", text: $customKeyRepeatText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 120)
+                                .onSubmit { applyCustomKeyRepeatDelay() }
+                            Text("seconds")
+                                .foregroundStyle(.secondary)
+                            Button("Apply") { applyCustomKeyRepeatDelay() }
+                        }
+                    }
+                    Text("Used when you say “press the page down key five times”. Default is 0.08 seconds.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -396,6 +420,11 @@ private struct AppRootView: View {
         case custom
     }
 
+    private enum KeyRepeatMenu: Hashable {
+        case millis(Int)
+        case custom
+    }
+
     private var finalizeMenu: FinalizeMenu {
         if finalizeUsesCustom { return .custom }
         if let tenths = AppSettings.finalizeDelayTenths(settings.finalizeDelaySeconds) {
@@ -414,7 +443,32 @@ private struct AppRootView: View {
                     applyFinalizeDelay(Double(tenths) / 10)
                 case .custom:
                     finalizeUsesCustom = true
-                    customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
+            customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
+            customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
+                }
+            }
+        )
+    }
+
+    private var keyRepeatMenu: KeyRepeatMenu {
+        if keyRepeatUsesCustom { return .custom }
+        if let millis = AppSettings.keyRepeatDelayMillis(settings.keyRepeatDelaySeconds) {
+            return .millis(millis)
+        }
+        return .custom
+    }
+
+    private var keyRepeatMenuBinding: Binding<KeyRepeatMenu> {
+        Binding(
+            get: { keyRepeatMenu },
+            set: { choice in
+                switch choice {
+                case .millis(let millis):
+                    keyRepeatUsesCustom = false
+                    applyKeyRepeatDelay(Double(millis) / 1000)
+                case .custom:
+                    keyRepeatUsesCustom = true
+                    customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
                 }
             }
         )
@@ -463,6 +517,29 @@ private struct AppRootView: View {
     private func applyCustomFinalizeDelay() {
         let parsed = Double(customFinalizeText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
         applyFinalizeDelay(parsed ?? settings.finalizeDelaySeconds)
+    }
+
+    private func applyKeyRepeatDelay(_ seconds: Double) {
+        settings.keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(seconds)
+        customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
+        persist()
+    }
+
+    private func applyCustomKeyRepeatDelay() {
+        let parsed = Double(customKeyRepeatText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+        applyKeyRepeatDelay(parsed ?? settings.keyRepeatDelaySeconds)
+    }
+
+    private static func keyRepeatMenuLabel(millis: Int) -> String {
+        if millis == 0 { return "None" }
+        return "\(millis) ms"
+    }
+
+    private static func keyRepeatFieldText(_ seconds: Double) -> String {
+        if seconds == 0 { return "0" }
+        let trimmed = String(format: "%.3f", seconds)
+        return trimmed.replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
     }
 
     private static func finalizeMenuLabel(tenths: Int) -> String {
