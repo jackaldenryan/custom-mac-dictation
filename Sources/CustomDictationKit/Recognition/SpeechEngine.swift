@@ -24,8 +24,11 @@ public final class SpeechEngine: @unchecked Sendable {
     private var lastVolatileAt = Date.distantPast
     private var pendingFinalize = false
     private var bufferCount = 0
+    private var outputFormat: AVAudioFormat?
+    private var lastMicrophoneUID: String?
+    private var lastVocabSignature = ""
     public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
-    public var isRunning: Bool { analyzer != nil }
+    public var isRunning: Bool { capture != nil }
 
     public init() {}
 
@@ -44,7 +47,17 @@ public final class SpeechEngine: @unchecked Sendable {
     }
 
     public func start(microphoneUID: String?, vocabulary: [VocabEntry], commandPhrases: [String]) async throws {
-        await stop()
+        let signature = Self.signature(vocabulary: vocabulary, phrases: commandPhrases)
+        if analyzer != nil, inputContinuation != nil, lastMicrophoneUID == microphoneUID, lastVocabSignature == signature {
+            if capture == nil {
+                try startCapture(microphoneUID: microphoneUID)
+                DiagnosticLog.line("Capture resumed")
+            }
+            return
+        }
+        await teardown()
+        lastMicrophoneUID = microphoneUID
+        lastVocabSignature = signature
         let locale = await resolvedLocale()
         _ = try await AssetInventory.reserve(locale: locale)
 
@@ -101,22 +114,11 @@ public final class SpeechEngine: @unchecked Sendable {
 
         let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
         inputContinuation = continuation
+        outputFormat = format
         lastInputEnd = .zero
         lastSpeechEnd = .zero
         bufferCount = 0
-
-        let capture = AudioCapture(deviceUID: microphoneUID, outputFormat: format) { [weak self] buffer, startTime in
-            guard let self else { return }
-            let duration = CMTime(value: CMTimeValue(buffer.frameLength), timescale: CMTimeScale(buffer.format.sampleRate))
-            let end = CMTimeAdd(startTime, duration)
-            self.lastInputEnd = end
-            self.bufferCount += 1
-            if self.bufferCount == 1 || self.bufferCount % 200 == 0 {
-                DiagnosticLog.line("Audio buffers=\(self.bufferCount) end=\(end.seconds)")
-            }
-            continuation.yield(AnalyzerInput(buffer: buffer, bufferStartTime: startTime))
-        }
-        try capture.start()
+        try startCapture(microphoneUID: microphoneUID)
 
         resultsTask = Task { [weak self] in
             do {
@@ -197,10 +199,49 @@ public final class SpeechEngine: @unchecked Sendable {
         self.analyzer = analyzer
         self.transcriber = transcriber
         self.detector = detector
-        self.capture = capture
     }
 
     public func stop() async {
+        pauseCapture()
+        DiagnosticLog.line("Capture paused after \(bufferCount) buffers")
+    }
+
+    private func startCapture(microphoneUID: String?) throws {
+        guard capture == nil else { return }
+        guard let format = outputFormat, let continuation = inputContinuation else {
+            throw NSError(
+                domain: "SpeechEngine",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Speech analyzer is not ready."]
+            )
+        }
+        let capture = AudioCapture(
+            deviceUID: microphoneUID,
+            outputFormat: format,
+            timeBase: lastInputEnd
+        ) { [weak self] buffer, startTime in
+            guard let self else { return }
+            let duration = CMTime(value: CMTimeValue(buffer.frameLength), timescale: CMTimeScale(buffer.format.sampleRate))
+            let end = CMTimeAdd(startTime, duration)
+            self.lastInputEnd = end
+            self.bufferCount += 1
+            if self.bufferCount == 1 || self.bufferCount % 200 == 0 {
+                DiagnosticLog.line("Audio buffers=\(self.bufferCount) end=\(end.seconds)")
+            }
+            continuation.yield(AnalyzerInput(buffer: buffer, bufferStartTime: startTime))
+        }
+        try capture.start()
+        self.capture = capture
+    }
+
+    private func pauseCapture() {
+        capture?.stop()
+        capture = nil
+        pendingFinalize = false
+    }
+
+    private func teardown() async {
+        pauseCapture()
         finalizeTask?.cancel()
         finalizeTask = nil
         resultsTask?.cancel()
@@ -209,8 +250,6 @@ public final class SpeechEngine: @unchecked Sendable {
         detectorTask = nil
         inputContinuation?.finish()
         inputContinuation = nil
-        capture?.stop()
-        capture = nil
         if let analyzer {
             await analyzer.cancelAndFinishNow()
         }
@@ -219,8 +258,15 @@ public final class SpeechEngine: @unchecked Sendable {
         analyzer = nil
         transcriber = nil
         detector = nil
-        pendingFinalize = false
-        DiagnosticLog.line("Engine stopped after \(bufferCount) buffers")
+        outputFormat = nil
+        lastMicrophoneUID = nil
+        lastVocabSignature = ""
+        DiagnosticLog.line("Engine torn down")
+    }
+
+    private static func signature(vocabulary: [VocabEntry], phrases: [String]) -> String {
+        vocabulary.map { "\($0.word)|\($0.ipa.joined(separator: ","))" }.joined(separator: ";")
+            + "\n" + phrases.joined(separator: "\n")
     }
 
     private func finalizeThroughLatest() async {

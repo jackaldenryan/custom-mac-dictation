@@ -14,6 +14,6 @@ public enum VocabularyStore {
 
     public struct ExportFile: Codable, Sendable {
         public var vocabulary: [VocabEntry]
-        public var commands: [ImportedCommand]
+        public var commands: [CommandSpec]
     }
 }

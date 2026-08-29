@@ -76,7 +76,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
     public var microphoneUID: String?
     public var vocabulary: [VocabEntry]
-    public var commands: [ImportedCommand]
+    public var commands: [CommandSpec]
     public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
@@ -95,7 +95,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             hasCompletedOnboarding: false,
             microphoneUID: nil,
             vocabulary: [],
-            commands: [],
+            commands: CommandSpec.builtIns,
             punctuationModes: [:],
             launchAtLogin: true,
             preferredListeningState: .off,
@@ -126,7 +126,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hasCompletedOnboarding: Bool,
         microphoneUID: String?,
         vocabulary: [VocabEntry],
-        commands: [ImportedCommand],
+        commands: [CommandSpec],
         punctuationModes: [String: PunctuationMode],
         launchAtLogin: Bool,
         preferredListeningState: ListeningState,
@@ -156,7 +156,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hasCompletedOnboarding = try container.decode(Bool.self, forKey: .hasCompletedOnboarding)
         microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID)
         vocabulary = try container.decodeIfPresent([VocabEntry].self, forKey: .vocabulary) ?? []
-        commands = try container.decodeIfPresent([ImportedCommand].self, forKey: .commands) ?? []
+        if let specs = try? container.decode([CommandSpec].self, forKey: .commands) {
+            commands = specs
+        } else if let imported = try? container.decode([ImportedCommand].self, forKey: .commands) {
+            commands = imported.map(CommandSpec.init)
+        } else {
+            commands = []
+        }
         punctuationModes = try container.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         preferredListeningState = try container.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
@@ -260,6 +266,20 @@ public final class SettingsStore: @unchecked Sendable {
         } else {
             cached = .default
         }
+        ConfigFolder.ensureLayout()
+        ConfigFolder.migrateIfNeeded(commands: cached.commands, vocabulary: cached.vocabulary)
+        applyFolder()
+        ConfigFolder.startWatching()
+    }
+
+    public func reloadFromFolder() {
+        queue.sync { applyFolder() }
+    }
+
+    private func applyFolder() {
+        let loaded = ConfigFolder.loadCommands()
+        cached.commands = loaded.isEmpty ? CommandSpec.builtIns : loaded
+        cached.vocabulary = ConfigFolder.loadVocabulary()
     }
 
     public var settings: AppSettings {
@@ -269,7 +289,14 @@ public final class SettingsStore: @unchecked Sendable {
     @discardableResult
     public func update(_ mutate: (inout AppSettings) -> Void) -> AppSettings {
         queue.sync {
+            let previous = cached
             mutate(&cached)
+            if previous.commands != cached.commands {
+                ConfigFolder.writeCommands(cached.commands)
+            }
+            if previous.vocabulary != cached.vocabulary {
+                ConfigFolder.writeVocabulary(cached.vocabulary)
+            }
             if let data = try? JSONEncoder().encode(cached) {
                 try? data.write(to: url, options: .atomic)
             }

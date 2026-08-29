@@ -18,79 +18,26 @@ public enum Router {
     ) -> RouteResult {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
+        let commands = settings.commands.filter(\.enabled)
 
-        if isStartListening(normalized) {
-            LivePhrase.discard()
-            if state != .listening { onStartListening() }
-            return .handled
-        }
-        if isStopListening(normalized) {
-            LivePhrase.keepAndUnhighlight()
-            if state == .listening { onStopListening() }
-            return .handled
+        if let command = firstMatch(normalized: normalized, transcript: transcript, commands: commands, when: .always) {
+            return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
         }
         if state != .listening {
             return .ignored
         }
-        if let imported = matchImported(normalized: normalized, settings: settings) {
+
+        let userExact = commands.filter { !$0.builtin && $0.match == .exact && $0.when == .listening }
+        if let command = bestExact(normalized: normalized, commands: userExact) {
             LivePhrase.discard()
-            return runImported(imported)
+            return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
         }
-        if let key = KeyPressGrammar.parse(transcript) {
+
+        let rest = commands.filter { $0.when == .listening && ($0.builtin || $0.match != .exact) }
+            .sorted { $0.priority < $1.priority }
+        if let command = firstMatch(normalized: normalized, transcript: transcript, commands: rest, when: .listening) {
             LivePhrase.discard()
-            Typist.press(
-                keyCode: key.keyCode,
-                flags: key.flags,
-                character: key.character,
-                times: key.times,
-                intervalSeconds: settings.keyRepeatDelaySeconds
-            )
-            return .handled
-        }
-        if normalized.hasPrefix("open ") {
-            LivePhrase.discard()
-            let name = String(normalized.dropFirst(5))
-            do {
-                try AppController.open(spokenName: name)
-                return .handled
-            } catch AppControlError.notFound {
-                return .failed("I could not find \(name)")
-            } catch {
-                return .failed("I could not open \(name)")
-            }
-        }
-        if normalized == "quit application" || normalized == "quit the application" || normalized == "quit app" {
-            LivePhrase.discard()
-            do {
-                try AppController.quitFrontmost()
-                return .handled
-            } catch {
-                return .failed("I could not quit that application")
-            }
-        }
-        if normalized.hasPrefix("quit ") {
-            LivePhrase.discard()
-            let name = String(normalized.dropFirst(5))
-            do {
-                try AppController.quit(spokenName: name)
-                return .handled
-            } catch AppControlError.notFound {
-                return .failed("I could not find \(name)")
-            } catch {
-                return .failed("I could not quit \(name)")
-            }
-        }
-        if isCapitalize(normalized) {
-            LivePhrase.discard()
-            return transform(.capitalize)
-        }
-        if isUppercase(normalized) {
-            LivePhrase.discard()
-            return transform(.uppercase)
-        }
-        if isLowercase(normalized) {
-            LivePhrase.discard()
-            return transform(.lowercase)
+            return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
         }
 
         guard !trimmed.isEmpty, !TranscriptNormalizer.isLonePunctuation(trimmed) else { return .ignored }
@@ -103,73 +50,125 @@ public enum Router {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
         if normalized.isEmpty { return trimmed.isEmpty }
-        if normalized.hasPrefix("start listening") || normalized.hasPrefix("stop listening") { return true }
-        if normalized == "press" || normalized.hasPrefix("press ") { return true }
-        if normalized == "open" || normalized.hasPrefix("open ") { return true }
-        if normalized == "quit" || normalized.hasPrefix("quit ") { return true }
-        if isTransformPrefix(normalized) {
-            return true
-        }
-        if matchImported(normalized: normalized, settings: settings) != nil {
-            return true
-        }
         return settings.commands.contains { command in
             guard command.enabled else { return false }
-            return command.phrases.contains { phrase in
-                let name = TranscriptNormalizer.normalize(phrase)
-                return name.hasPrefix(normalized) && normalized.count >= 3
-            }
+            return holds(command, normalized: normalized)
         }
     }
 
-    private static func isCapitalize(_ normalized: String) -> Bool {
-        normalized == "capitalize that" || normalized == "capital that" || normalized == "capitalise that"
+    private static func firstMatch(
+        normalized: String,
+        transcript: String,
+        commands: [CommandSpec],
+        when: CommandWhen
+    ) -> CommandSpec? {
+        commands
+            .filter { $0.when == when }
+            .sorted { $0.priority < $1.priority }
+            .first { matches($0, normalized: normalized, transcript: transcript) }
     }
 
-    private static func isUppercase(_ normalized: String) -> Bool {
-        normalized == "uppercase that" || normalized == "upper case that" || normalized == "all caps that"
-    }
-
-    private static func isLowercase(_ normalized: String) -> Bool {
-        normalized == "lowercase that" || normalized == "lower case that" || normalized == "all lowercase that"
-    }
-
-    private static func isTransformPrefix(_ normalized: String) -> Bool {
-        normalized == "upper" || normalized.hasPrefix("upper ") || normalized.hasPrefix("uppercase")
-            || normalized == "lower" || normalized.hasPrefix("lower ") || normalized.hasPrefix("lowercase")
-            || normalized == "capital" || normalized.hasPrefix("capital")
-            || normalized.hasPrefix("all caps") || normalized.hasPrefix("all lowercase")
-    }
-
-    private static func isStartListening(_ normalized: String) -> Bool {
-        normalized == "start listening dictation" || normalized == "start listening mac"
-    }
-
-    private static func isStopListening(_ normalized: String) -> Bool {
-        normalized == "stop listening dictation" || normalized == "stop listening mac"
-    }
-
-    private static func transform(_ kind: SelectionTransform.Kind) -> RouteResult {
-        do {
-            try SelectionTransform.apply(kind)
-            return .handled
-        } catch {
-            return .failed("Nothing selected")
-        }
-    }
-
-    private static func matchImported(normalized: String, settings: AppSettings) -> ImportedCommand? {
+    private static func bestExact(normalized: String, commands: [CommandSpec]) -> CommandSpec? {
         let frontID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let matches = settings.commands.filter { command in
-            guard command.enabled else { return false }
+        let matches = commands.filter { command in
             if let scope = command.scopeBundleID, scope != frontID { return false }
             return command.phrases.contains { TranscriptNormalizer.normalize($0) == normalized }
         }
         return matches.max { $0.phrases.joined().count < $1.phrases.joined().count }
     }
 
-    private static func runImported(_ command: ImportedCommand) -> RouteResult {
-        switch command.kind {
+    private static func matches(_ command: CommandSpec, normalized: String, transcript: String) -> Bool {
+        let frontID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        if let scope = command.scopeBundleID, scope != frontID { return false }
+        switch command.match {
+        case .exact:
+            return command.phrases.contains { TranscriptNormalizer.normalize($0) == normalized }
+        case .prefix:
+            let prefix = command.prefix ?? ""
+            return !prefix.isEmpty && normalized.hasPrefix(prefix) && normalized.count > prefix.count
+        case .keyPressGrammar:
+            return KeyPressGrammar.parse(transcript) != nil
+        }
+    }
+
+    private static func holds(_ command: CommandSpec, normalized: String) -> Bool {
+        switch command.match {
+        case .exact:
+            return command.phrases.contains { phrase in
+                let name = TranscriptNormalizer.normalize(phrase)
+                if name == normalized { return true }
+                return name.hasPrefix(normalized) && normalized.count >= 3
+            }
+        case .prefix:
+            let prefix = command.prefix ?? ""
+            let word = prefix.trimmingCharacters(in: .whitespaces)
+            return normalized == word || (!prefix.isEmpty && normalized.hasPrefix(prefix)) || (!word.isEmpty && normalized.hasPrefix(word + " "))
+        case .keyPressGrammar:
+            return normalized == "press" || normalized.hasPrefix("press ")
+        }
+    }
+
+    private static func run(
+        _ command: CommandSpec,
+        transcript: String,
+        normalized: String,
+        state: ListeningState,
+        settings: AppSettings,
+        onStartListening: () -> Void,
+        onStopListening: () -> Void
+    ) -> RouteResult {
+        switch command.action {
+        case .startListening:
+            LivePhrase.discard()
+            if state != .listening { onStartListening() }
+            return .handled
+        case .stopListening:
+            LivePhrase.keepAndUnhighlight()
+            if state == .listening { onStopListening() }
+            return .handled
+        case .keyPressGrammar:
+            guard let key = KeyPressGrammar.parse(transcript) else { return .ignored }
+            Typist.press(
+                keyCode: key.keyCode,
+                flags: key.flags,
+                character: key.character,
+                times: key.times,
+                intervalSeconds: settings.keyRepeatDelaySeconds
+            )
+            return .handled
+        case .openApp:
+            let name = argument(normalized, prefix: command.prefix ?? "open ")
+            do {
+                try AppController.open(spokenName: name)
+                return .handled
+            } catch AppControlError.notFound {
+                return .failed("I could not find \(name)")
+            } catch {
+                return .failed("I could not open \(name)")
+            }
+        case .quitFrontmost:
+            do {
+                try AppController.quitFrontmost()
+                return .handled
+            } catch {
+                return .failed("I could not quit that application")
+            }
+        case .quitApp:
+            let name = argument(normalized, prefix: command.prefix ?? "quit ")
+            do {
+                try AppController.quit(spokenName: name)
+                return .handled
+            } catch AppControlError.notFound {
+                return .failed("I could not find \(name)")
+            } catch {
+                return .failed("I could not quit \(name)")
+            }
+        case .capitalize:
+            return transform(.capitalize)
+        case .uppercase:
+            return transform(.uppercase)
+        case .lowercase:
+            return transform(.lowercase)
         case .shortcut:
             guard let keyCode = command.keyCode else { return .failed("That shortcut is incomplete") }
             Typist.pressShortcut(keyCode: keyCode, modifierFlags: command.modifierFlags ?? 0)
@@ -194,6 +193,22 @@ public enum Router {
                 }
             }
             return .failed("I could not open that file")
+        }
+    }
+
+    private static func argument(_ normalized: String, prefix: String) -> String {
+        if normalized.hasPrefix(prefix) {
+            return String(normalized.dropFirst(prefix.count))
+        }
+        return normalized
+    }
+
+    private static func transform(_ kind: SelectionTransform.Kind) -> RouteResult {
+        do {
+            try SelectionTransform.apply(kind)
+            return .handled
+        } catch {
+            return .failed("Nothing selected")
         }
     }
 }

@@ -162,6 +162,7 @@ if let chrome = AppNameResolver.resolve("chrome") {
     expect(chrome.name.lowercased().contains("chrome"), "chrome from installed apps")
 }
 
+expect(AppSettings.default.commands.contains { $0.id == "builtin.press" }, "default includes press")
 expect(Router.shouldHoldLive(transcript: "press return", state: .listening, settings: .default), "hold press")
 expect(!Router.shouldHoldLive(transcript: "hello there", state: .listening, settings: .default), "live hello")
 expect(!Router.shouldHoldLive(transcript: "comma", state: .listening, settings: .default), "live comma words")

@@ -59,6 +59,7 @@ public final class ListeningSession: ObservableObject {
         let generation = startGeneration
         lastError = ""
         DiagnosticLog.line("Start listening requested")
+        setState(.listening, persist: true)
         do {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
@@ -66,12 +67,12 @@ public final class ListeningSession: ObservableObject {
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
                 vocabulary: settings.vocabulary,
-                commandPhrases: settings.commands.flatMap(\.phrases) + Self.builtInPhrases + AppNameResolver.commandPhrases()
+                commandPhrases: settings.commands.flatMap(\.phrases) + AppNameResolver.commandPhrases()
             )
             guard generation == startGeneration else { return }
-            setState(.listening, persist: true)
             DiagnosticLog.line("Listening")
         } catch {
+            guard generation == startGeneration else { return }
             DiagnosticLog.line("Start failed: \(error.localizedDescription)")
             lastError = error.localizedDescription
             onErrorMessage?(error.localizedDescription)
@@ -95,9 +96,9 @@ public final class ListeningSession: ObservableObject {
     public func stopCompletely(persist: Bool = true) async {
         startGeneration += 1
         LivePhrase.keepAndUnhighlight()
+        setState(.off, persist: persist)
         await engine.stop()
         lastMicrophoneUID = nil
-        setState(.off, persist: persist)
         DiagnosticLog.line("Stopped")
     }
 
@@ -190,23 +191,6 @@ public final class ListeningSession: ObservableObject {
             SoundFeedback.playCommand()
         }
     }
-
-    private static let builtInPhrases: [String] = {
-        var phrases = [
-            "start listening dictation",
-            "stop listening dictation",
-            "start listening Mac",
-            "stop listening Mac",
-            "press",
-            "open",
-            "quit",
-            "quit application",
-            "capitalize that",
-            "uppercase that",
-            "lowercase that"
-        ]
-        return phrases
-    }()
 
     private func setState(_ newState: ListeningState, persist: Bool) {
         state = newState

@@ -20,14 +20,20 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
         window.title = "Custom Dictation"
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        let toolbar = NSToolbar(identifier: "CustomDictation.Main")
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
         window.collectionBehavior.insert(.fullScreenPrimary)
-        window.minSize = NSSize(width: 560, height: 360)
-        window.setFrameAutosaveName("CustomDictation.Main.v2")
+        window.minSize = NSSize(width: 720, height: 480)
+        window.setFrameAutosaveName("CustomDictation.Main.v3")
         window.isRestorable = true
         window.isReleasedWhenClosed = false
-        if !window.setFrameUsingName("CustomDictation.Main.v2") {
-            window.setContentSize(NSSize(width: 900, height: 620))
+        if !window.setFrameUsingName("CustomDictation.Main.v3") {
+            window.setContentSize(NSSize(width: 980, height: 680))
             window.center()
         }
         fit(window)
@@ -84,33 +90,54 @@ private struct AppRootView: View {
     @State private var postProcessName = PostProcessConfig.builtInDefault.name
     @State private var postProcessScript = PostProcessConfig.builtInDefault.script
     @State private var postProcessMessage = ""
+    @State private var section: AppSection = .listen
+    @State private var vocabSearch = ""
+    @State private var commandSearch = ""
+    @State private var selectedVocab = Set<String>()
+    @State private var selectedCommands = Set<String>()
+    @State private var showFormat = false
 
     var body: some View {
-        TabView {
-            listenTab
-                .tabItem { Label("Listen", systemImage: "mic.fill") }
-            vocabularyTab
-                .tabItem { Label("Vocabulary", systemImage: "text.book.closed") }
-            commandsTab
-                .tabItem { Label("Commands", systemImage: "command") }
-            postProcessTab
-                .tabItem { Label("Post-process", systemImage: "function") }
-            updatesTab
-                .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
-            diagnosticsTab
-                .tabItem { Label("Diagnostics", systemImage: "waveform.path.ecg") }
+        NavigationSplitView {
+            List(selection: $section) {
+                ForEach(AppSection.allCases) { item in
+                    Label(item.title, systemImage: item.icon)
+                        .tag(item)
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+        } detail: {
+            Group {
+                switch section {
+                case .listen: listenTab
+                case .vocabulary: vocabularyTab
+                case .commands: commandsTab
+                case .postProcess: postProcessTab
+                case .updates: updatesTab
+                case .diagnostics: diagnosticsTab
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(24)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .navigationSplitViewStyle(.balanced)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             settings = store.settings
             customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
             mics = AudioCapture.listMicrophones()
             logText = DiagnosticLog.tail()
             accessibilityTrusted = AXIsProcessTrusted()
+            loadPostProcessDraft()
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             accessibilityTrusted = AXIsProcessTrusted()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ConfigFolder.didChange)) { _ in
+            store.reloadFromFolder()
+            settings = store.settings
         }
     }
 
@@ -118,7 +145,7 @@ private struct AppRootView: View {
         ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             Text(statusTitle)
-                .font(.largeTitle.weight(.semibold))
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
             Text(statusDetail)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -132,22 +159,33 @@ private struct AppRootView: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack {
+            HStack(spacing: 10) {
                 if session.state == .listening {
                     Button("Stop Listening") {
                         Task { await session.stopCompletely() }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 } else {
                     Button("Start Listening") {
                         Task { await session.startListening() }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
                 }
             }
-            GroupBox("Try it here") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Try it here")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
                 TextEditor(text: $scratch)
                     .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
                     .frame(minHeight: 160)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
             }
             if !session.lastPartial.isEmpty {
                 Text("Hearing: \(session.lastPartial)")
@@ -251,7 +289,7 @@ private struct AppRootView: View {
     private var postProcessTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Post-process")
-                .font(.title2.weight(.semibold))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
             Text("Runs only after a phrase is routed as typed text, not on commands. Default is the built-in rules. Duplicate it to experiment. function process(ctx) must return the string to type, or null to ignore.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -272,9 +310,12 @@ private struct AppRootView: View {
                 .onSubmit { savePostProcessDraft() }
             TextEditor(text: $postProcessScript)
                 .font(.system(.body, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(8)
                 .disabled(settings.activePostProcessConfig.isBuiltInDefault)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .border(.separator)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
             HStack {
                 Button("Save") { savePostProcessDraft() }
                     .disabled(settings.activePostProcessConfig.isBuiltInDefault)
@@ -295,7 +336,7 @@ private struct AppRootView: View {
     private var updatesTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Updates")
-                .font(.title2.weight(.semibold))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
             Text("Current version \(AppVersion.current)")
             Text(updater.message)
                 .foregroundStyle(.secondary)
@@ -324,51 +365,33 @@ private struct AppRootView: View {
     private var vocabularyTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Vocabulary")
-                .font(.title2.weight(.semibold))
-            Text("Words the recognizer should learn. Leave pronunciation blank unless a word is often misheard.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+            configFolderHeader(message: $vocabMessage)
             HStack {
                 TextField("Word", text: $newWord)
                     .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 160)
-                TextField("Pronunciation, IPA, optional", text: $newIPA)
+                TextField("IPA, optional", text: $newIPA)
                     .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 200)
-                    .help("International Phonetic Alphabet, only if the word is often misheard. Example: kæt for cat.")
-                Button("Add word") { addWord() }
+                Button("Add") { addWord() }
                     .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Delete") { deleteSelectedVocab() }
+                    .disabled(selectedVocab.isEmpty)
             }
-            Text("IPA is a pronunciation spelling. Skip it for ordinary words.")
+            TextField("Search", text: $vocabSearch)
+                .textFieldStyle(.roundedBorder)
+            Table(filteredVocabulary, selection: $selectedVocab) {
+                TableColumn("Word") { entry in
+                    Text(entry.word)
+                }
+                TableColumn("IPA") { entry in
+                    Text(entry.ipa.joined(separator: ", "))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .onDeleteCommand { deleteSelectedVocab() }
+            Text("Select a row and press Delete. Restart listening after changes. Files live in ~/.custom-dictation-config/vocabulary.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            HStack {
-                Button(importingVoiceControl ? "Importing…" : "Import from Voice Control") {
-                    importVoiceControl()
-                }
-                .disabled(importingVoiceControl)
-                Button("Export…") { exportJSON() }
-                Button("Import file…") { importJSON() }
-            }
-            if !vocabMessage.isEmpty {
-                Text(vocabMessage)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            List {
-                ForEach(settings.vocabulary) { entry in
-                    HStack {
-                        Text(entry.word)
-                        if !entry.ipa.isEmpty {
-                            Text(entry.ipa.joined(separator: ", "))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("Remove") { removeWord(entry) }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -376,10 +399,8 @@ private struct AppRootView: View {
     private var commandsTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Commands")
-                .font(.title2.weight(.semibold))
-            Text("A whole spoken phrase runs one action. It does not replace words inside ordinary dictation.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+            configFolderHeader(message: $commandMessage)
             HStack {
                 TextField("Say this", text: $newPhrase)
                     .textFieldStyle(.roundedBorder)
@@ -391,37 +412,86 @@ private struct AppRootView: View {
                 .labelsHidden()
                 .frame(width: 130)
                 commandDetailField
-                Button("Add command") { addCommand() }
+                Button("Add") { addCommand() }
                     .disabled(!canAddCommand)
+                Button("Delete") { deleteSelectedCommands() }
+                    .disabled(selectedCommands.isEmpty || selectedCommands.allSatisfy { id in
+                        settings.commands.first { $0.id == id }?.builtin == true
+                    })
             }
+            TextField("Search", text: $commandSearch)
+                .textFieldStyle(.roundedBorder)
+            Table(filteredCommands, selection: $selectedCommands) {
+                TableColumn("Phrase") { command in
+                    Text(command.title)
+                }
+                TableColumn("Action") { command in
+                    Text(command.actionTitle)
+                        .foregroundStyle(.secondary)
+                }
+                TableColumn("Kind") { command in
+                    Text(command.builtin ? "Built-in" : "Custom")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .onDeleteCommand { deleteSelectedCommands() }
+            Text("Built-in commands are JSON files too. Editing them does not change engine behavior beyond the phrases and match rules in the file. Select a custom row and press Delete.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var filteredVocabulary: [VocabEntry] {
+        let q = vocabSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty { return settings.vocabulary }
+        return settings.vocabulary.filter { $0.word.localizedCaseInsensitiveContains(q) || $0.ipa.joined().localizedCaseInsensitiveContains(q) }
+    }
+
+    private var filteredCommands: [CommandSpec] {
+        let q = commandSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty { return settings.commands }
+        return settings.commands.filter {
+            $0.title.localizedCaseInsensitiveContains(q)
+                || $0.actionTitle.localizedCaseInsensitiveContains(q)
+                || $0.phrases.joined(separator: " ").localizedCaseInsensitiveContains(q)
+        }
+    }
+
+    @ViewBuilder
+    private func configFolderHeader(message: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("~/.custom-dictation-config")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
             HStack {
-                Button(importingVoiceControl ? "Importing…" : "Import from Voice Control") {
+                Button("Show folder") { ConfigFolder.revealInFinder() }
+                Button("Export folder…") { exportConfigFolder() }
+                Button("Import folder…") { importConfigFolder() }
+                Button(importingVoiceControl ? "Importing…" : "Import Voice Control") {
                     importVoiceControl()
                 }
                 .disabled(importingVoiceControl)
+                Button("Restore built-ins") {
+                    ConfigFolder.restoreBuiltins()
+                    store.reloadFromFolder()
+                    settings = store.settings
+                    commandMessage = "Restored built-in command files."
+                }
             }
-            if !commandMessage.isEmpty {
-                Text(commandMessage)
+            DisclosureGroup("Folder format", isExpanded: $showFormat) {
+                Text("One JSON file per command in commands/, one JSON file per word in vocabulary/. See README.md in the folder. Import replaces ~/.custom-dictation-config. You can also replace that folder yourself.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            List {
-                ForEach(settings.commands) { command in
-                    HStack {
-                        Text(command.phrases.joined(separator: ", "))
-                        Text(command.kind.title)
-                            .foregroundStyle(.secondary)
-                        Text(commandSummary(command))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Spacer()
-                        Button("Remove") { removeCommand(command) }
-                    }
-                }
+            if !message.wrappedValue.isEmpty {
+                Text(message.wrappedValue)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -447,7 +517,7 @@ private struct AppRootView: View {
     private var diagnosticsTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Diagnostics")
-                .font(.title2.weight(.semibold))
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
             Text("Last heard: \(session.lastFinal.isEmpty ? "—" : session.lastFinal)")
             Text("Last route: \(session.lastRoute.isEmpty ? "—" : session.lastRoute)")
             ScrollView {
@@ -457,7 +527,9 @@ private struct AppRootView: View {
                     .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .border(Color.secondary.opacity(0.3))
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
             HStack {
                 Button("Refresh log") { logText = DiagnosticLog.tail() }
                 Button("Copy log") {
@@ -485,6 +557,39 @@ private struct AppRootView: View {
             return "Start listening, click the box below or another app, then speak."
         case .listening:
             return "Click the box below or another app, then speak. Say “stop listening dictation” to stop."
+        }
+    }
+
+    private enum AppSection: String, CaseIterable, Identifiable, Hashable {
+        case listen
+        case vocabulary
+        case commands
+        case postProcess
+        case updates
+        case diagnostics
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .listen: return "Listen"
+            case .vocabulary: return "Vocabulary"
+            case .commands: return "Commands"
+            case .postProcess: return "Post-process"
+            case .updates: return "Updates"
+            case .diagnostics: return "Diagnostics"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .listen: return "mic.fill"
+            case .vocabulary: return "text.book.closed"
+            case .commands: return "command"
+            case .postProcess: return "function"
+            case .updates: return "arrow.down.circle"
+            case .diagnostics: return "waveform.path.ecg"
+            }
         }
     }
 
@@ -749,10 +854,12 @@ private struct AppRootView: View {
         vocabMessage = "Added \(word). Restart listening to apply."
     }
 
-    private func removeWord(_ entry: VocabEntry) {
-        settings.vocabulary.removeAll { $0.id == entry.id }
+    private func deleteSelectedVocab() {
+        let ids = selectedVocab
+        settings.vocabulary.removeAll { ids.contains($0.id) }
         persist()
-        vocabMessage = "Removed \(entry.word)."
+        selectedVocab = []
+        vocabMessage = "Removed \(ids.count) word(s)."
     }
 
     private var canAddCommand: Bool {
@@ -771,10 +878,16 @@ private struct AppRootView: View {
     private func addCommand() {
         let phrase = newPhrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !phrase.isEmpty else { return }
-        var command = ImportedCommand(
+        var command = CommandSpec(
             id: "Custom.local.\(UUID().uuidString)",
             phrases: [phrase],
-            kind: newCommandKind
+            action: {
+                switch newCommandKind {
+                case .pasteText: return .pasteText
+                case .shortcut: return .shortcut
+                case .openFile: return .openFile
+                }
+            }()
         )
         switch newCommandKind {
         case .pasteText:
@@ -792,7 +905,8 @@ private struct AppRootView: View {
         }
         let newNormalized = command.phrases.map(TranscriptNormalizer.normalize)
         settings.commands.removeAll { existing in
-            existing.phrases.contains { newNormalized.contains(TranscriptNormalizer.normalize($0)) }
+            guard !existing.builtin else { return false }
+            return existing.phrases.contains { newNormalized.contains(TranscriptNormalizer.normalize($0)) }
         }
         settings.commands.append(command)
         persist()
@@ -804,21 +918,14 @@ private struct AppRootView: View {
         commandMessage = "Added command. Restart listening to apply."
     }
 
-    private func removeCommand(_ command: ImportedCommand) {
-        settings.commands.removeAll { $0.id == command.id }
-        persist()
-        commandMessage = "Removed command."
-    }
-
-    private func commandSummary(_ command: ImportedCommand) -> String {
-        switch command.kind {
-        case .pasteText:
-            return command.pasteText ?? ""
-        case .shortcut:
-            return command.keyCode.map(String.init) ?? ""
-        case .openFile:
-            return (command.filePath as NSString?)?.lastPathComponent ?? ""
+    private func deleteSelectedCommands() {
+        let ids = selectedCommands
+        settings.commands.removeAll { command in
+            ids.contains(command.id) && !command.builtin
         }
+        persist()
+        selectedCommands = []
+        commandMessage = "Removed selected custom commands."
     }
 
     private func chooseCommandFile() {
@@ -857,9 +964,9 @@ private struct AppRootView: View {
             do {
                 let result = try VoiceControlImporter.importFromThisMac()
                 await MainActor.run {
-                    let kept = settings.commands.filter { $0.id.hasPrefix("Custom.local.") }
+                    let kept = settings.commands.filter { $0.id.hasPrefix("Custom.local.") || $0.builtin }
                     settings.vocabulary = result.vocabulary
-                    settings.commands = kept + result.commands
+                    settings.commands = kept + result.commands.map(CommandSpec.init)
                     persist()
                     importingVoiceControl = false
                     let summary = "Imported \(result.vocabulary.count) words and \(result.commands.count) commands."
@@ -876,30 +983,41 @@ private struct AppRootView: View {
         }
     }
 
-    private func exportJSON() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "custom-dictation-vocabulary.json"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func exportConfigFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Export"
+        panel.message = "Choose a folder to copy ~/.custom-dictation-config into."
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+        let dest = dir.appendingPathComponent(ConfigFolder.folderName, isDirectory: true)
         do {
-            try VocabularyStore.exportJSON(settings: settings, to: url)
+            try ConfigFolder.export(to: dest)
+            commandMessage = "Exported to \(dest.path)"
+            vocabMessage = commandMessage
         } catch {
-            updater.message = error.localizedDescription
+            commandMessage = error.localizedDescription
+            vocabMessage = error.localizedDescription
         }
     }
 
-    private func importJSON() {
+    private func importConfigFolder() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.urls.first else { return }
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Import"
+        panel.message = "This replaces ~/.custom-dictation-config."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            let file = try VocabularyStore.importJSON(from: url)
-            settings.vocabulary = file.vocabulary
-            settings.commands = file.commands
-            persist()
+            try ConfigFolder.importReplacing(from: url)
+            store.reloadFromFolder()
+            settings = store.settings
+            commandMessage = "Imported folder."
+            vocabMessage = "Imported folder."
         } catch {
-            updater.message = error.localizedDescription
+            commandMessage = error.localizedDescription
+            vocabMessage = error.localizedDescription
         }
     }
 }

@@ -16,14 +16,17 @@ public final class AudioCapture {
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var framePosition: Int64 = 0
+    private let timeBase: CMTime
 
     public init(
         deviceUID: String?,
         outputFormat: AVAudioFormat?,
+        timeBase: CMTime = .zero,
         onBuffer: @escaping @Sendable (AVAudioPCMBuffer, CMTime) -> Void
     ) {
         self.deviceUID = deviceUID
         self.outputFormat = outputFormat ?? AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
+        self.timeBase = timeBase
         self.onBuffer = onBuffer
     }
 
@@ -63,7 +66,10 @@ public final class AudioCapture {
             guard let self else { return }
             let usable = self.convert(buffer) ?? (self.converter == nil ? buffer : nil)
             guard let usable, usable.frameLength > 0 else { return }
-            let start = CMTime(value: self.framePosition, timescale: CMTimeScale(self.outputFormat.sampleRate))
+            let start = CMTimeAdd(
+                self.timeBase,
+                CMTime(value: self.framePosition, timescale: CMTimeScale(self.outputFormat.sampleRate))
+            )
             self.framePosition += Int64(usable.frameLength)
             self.onBuffer(usable, start)
         }
