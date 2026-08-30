@@ -20,13 +20,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
         window.title = "Custom Dictation"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unified
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        let toolbar = NSToolbar(identifier: "CustomDictation.Main")
-        toolbar.displayMode = .iconOnly
-        window.toolbar = toolbar
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 720, height: 480)
         window.setFrameAutosaveName("CustomDictation.Main.v3")
@@ -91,7 +85,6 @@ private struct AppRootView: View {
     @State private var postProcessScript = PostProcessConfig.builtInDefault.script
     @State private var postProcessMessage = ""
     @State private var section: AppSection = .listen
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var vocabSearch = ""
     @State private var commandSearch = ""
     @State private var selectedVocab = Set<String>()
@@ -99,14 +92,29 @@ private struct AppRootView: View {
     @State private var showFormat = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(AppSection.allCases, id: \.self, selection: $section) { item in
-                Label(item.title, systemImage: item.icon)
-                    .tag(item)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(AppSection.allCases, id: \.self) { item in
+                    Button {
+                        section = item
+                    } label: {
+                        Label(item.title, systemImage: item.icon)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(section == item ? Color.accentColor.opacity(0.18) : Color.clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
             }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
-        } detail: {
+            .padding(8)
+            .frame(width: 200)
+            .background(Color(nsColor: .windowBackgroundColor))
+            Divider()
             Group {
                 switch section {
                 case .listen: listenTab
@@ -120,12 +128,6 @@ private struct AppRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(24)
             .background(Color(nsColor: .windowBackgroundColor))
-        }
-        .navigationSplitViewStyle(.balanced)
-        .onChange(of: columnVisibility) { _, visibility in
-            if visibility != .all {
-                columnVisibility = .all
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
@@ -448,19 +450,26 @@ private struct AppRootView: View {
     }
 
     private var filteredVocabulary: [VocabEntry] {
-        let q = vocabSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty { return settings.vocabulary }
-        return settings.vocabulary.filter { $0.word.localizedCaseInsensitiveContains(q) || $0.ipa.joined().localizedCaseInsensitiveContains(q) }
+        uniqueByID(settings.vocabulary.filter { entry in
+            let q = vocabSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+            if q.isEmpty { return true }
+            return entry.word.localizedCaseInsensitiveContains(q) || entry.ipa.joined().localizedCaseInsensitiveContains(q)
+        })
     }
 
     private var filteredCommands: [CommandSpec] {
-        let q = commandSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty { return settings.commands }
-        return settings.commands.filter {
-            $0.title.localizedCaseInsensitiveContains(q)
-                || $0.actionTitle.localizedCaseInsensitiveContains(q)
-                || $0.phrases.joined(separator: " ").localizedCaseInsensitiveContains(q)
-        }
+        uniqueByID(settings.commands.filter { command in
+            let q = commandSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+            if q.isEmpty { return true }
+            return command.title.localizedCaseInsensitiveContains(q)
+                || command.actionTitle.localizedCaseInsensitiveContains(q)
+                || command.phrases.joined(separator: " ").localizedCaseInsensitiveContains(q)
+        })
+    }
+
+    private func uniqueByID<T: Identifiable>(_ items: [T]) -> [T] where T.ID: Hashable {
+        var seen = Set<T.ID>()
+        return items.filter { seen.insert($0.id).inserted }
     }
 
     @ViewBuilder
