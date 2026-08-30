@@ -16,6 +16,8 @@ expect(KeyPressGrammar.parse("command click") == nil, "click is not key grammar"
 expect(!CommandSpec.builtIns.isEmpty, "shipped command JSON loaded")
 expect(CommandSpec.builtIns.contains { $0.action == .click && $0.phrases.contains("command click") }, "default command click")
 expect(CommandSpec.builtIns.contains { $0.action == .click && $0.phrases.contains("right click") }, "default right click")
+expect(CommandSpec.builtIns.contains { $0.id == "builtin.double-click" && $0.clickTimes == 2 }, "default double click")
+expect(CommandSpec.builtIns.contains { $0.id == "builtin.triple-click" && $0.clickTimes == 3 }, "default triple click")
 expect(CommandSpec.builtIns.contains { $0.match == .appSlot && $0.phrases.contains("open {app}") }, "open app slot")
 expect(CommandSpec.builtIns.contains { $0.match == .appSlot && $0.phrases.contains("quit {app}") }, "quit app slot")
 expect(Router.shouldHoldLive(transcript: "command click", state: .listening, settings: .default), "hold command click")

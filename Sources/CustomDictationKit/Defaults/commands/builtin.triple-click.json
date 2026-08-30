@@ -1,0 +1,15 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 3,
+  "enabled": true,
+  "id": "builtin.triple-click",
+  "match": "exact",
+  "phrases": [
+    "triple click",
+    "press triple click"
+  ],
+  "priority": 184,
+  "when": "listening"
+}

@@ -76,17 +76,21 @@ public enum Typist {
         }
         let repeats = min(75, max(1, times))
         let point = cgMouseLocation()
-        let source = CGEventSource(stateID: .privateState)
+        let source = CGEventSource(stateID: .hidSystemState)
         source?.localEventsSuppressionInterval = 0
         let button: CGMouseButton = right ? .right : .left
         let downType: CGEventType = right ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = right ? .rightMouseUp : .leftMouseUp
         postModifiers(source: source, flags: flags, keyDown: true)
+        if !flags.isEmpty {
+            Thread.sleep(forTimeInterval: 0.03)
+        }
+        let mouseFlags = flags.union(CGEventSource.flagsState(.hidSystemState))
         for index in 1...repeats {
             let down = CGEvent(mouseEventSource: source, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
             let up = CGEvent(mouseEventSource: source, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
-            down?.flags = flags
-            up?.flags = flags
+            down?.flags = mouseFlags
+            up?.flags = mouseFlags
             down?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
             up?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
             down?.post(tap: .cghidEventTap)

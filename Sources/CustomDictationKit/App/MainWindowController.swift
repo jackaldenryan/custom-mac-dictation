@@ -1076,6 +1076,8 @@ private struct AppRootView: View {
             return (UInt64(flags.rawValue), "right", 1)
         case "double", "double click":
             return (UInt64(flags.rawValue), "left", 2)
+        case "triple", "triple click":
+            return (UInt64(flags.rawValue), "left", 3)
         default:
             return nil
         }
