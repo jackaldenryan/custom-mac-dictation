@@ -4,6 +4,7 @@ public enum CommandMatch: String, Codable, Sendable {
     case exact
     case prefix
     case keyPressGrammar
+    case appSlot
 }
 
 public enum CommandWhen: String, Codable, Sendable {
@@ -24,6 +25,7 @@ public enum CommandAction: String, Codable, Sendable {
     case pasteText
     case shortcut
     case openFile
+    case click
 }
 
 public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
@@ -42,10 +44,13 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
     public var fileBookmark: Data?
     public var filePath: String?
     public var scopeBundleID: String?
+    public var clickButton: String?
+    public var clickTimes: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, enabled, builtin, phrases, match, prefix, `when`, priority, action
         case pasteText, keyCode, modifierFlags, fileBookmark, filePath, scopeBundleID
+        case clickButton, clickTimes
     }
 
     public init(from decoder: Decoder) throws {
@@ -72,6 +77,8 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
         fileBookmark = try c.decodeIfPresent(Data.self, forKey: .fileBookmark)
         filePath = try c.decodeIfPresent(String.self, forKey: .filePath)
         scopeBundleID = try c.decodeIfPresent(String.self, forKey: .scopeBundleID)
+        clickButton = try c.decodeIfPresent(String.self, forKey: .clickButton)
+        clickTimes = try c.decodeIfPresent(Int.self, forKey: .clickTimes)
     }
 
     public init(
@@ -89,7 +96,9 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
         modifierFlags: UInt64? = nil,
         fileBookmark: Data? = nil,
         filePath: String? = nil,
-        scopeBundleID: String? = nil
+        scopeBundleID: String? = nil,
+        clickButton: String? = nil,
+        clickTimes: Int? = nil
     ) {
         self.id = id
         self.enabled = enabled
@@ -106,6 +115,8 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
         self.fileBookmark = fileBookmark
         self.filePath = filePath
         self.scopeBundleID = scopeBundleID
+        self.clickButton = clickButton
+        self.clickTimes = clickTimes
     }
 
     public init(_ imported: ImportedCommand) {
@@ -114,6 +125,7 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
         case .pasteText: action = .pasteText
         case .shortcut: action = .shortcut
         case .openFile: action = .openFile
+        case .click: action = .click
         }
         self.init(
             id: imported.id,
@@ -153,92 +165,44 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
         case .pasteText: return "Paste text"
         case .shortcut: return "Shortcut"
         case .openFile: return "Open file"
+        case .click: return "Click"
         }
     }
 
-    public static let builtIns: [CommandSpec] = [
-        CommandSpec(
-            id: "builtin.start-listening",
-            builtin: true,
-            phrases: ["start listening dictation", "start listening mac"],
-            match: .exact,
-            when: .always,
-            priority: 0,
-            action: .startListening
-        ),
-        CommandSpec(
-            id: "builtin.stop-listening",
-            builtin: true,
-            phrases: ["stop listening dictation", "stop listening mac"],
-            match: .exact,
-            when: .always,
-            priority: 1,
-            action: .stopListening
-        ),
-        CommandSpec(
-            id: "builtin.press",
-            builtin: true,
-            phrases: ["press"],
-            match: .keyPressGrammar,
-            when: .listening,
-            priority: 190,
-            action: .keyPressGrammar
-        ),
-        CommandSpec(
-            id: "builtin.open-app",
-            builtin: true,
-            phrases: ["open"],
-            match: .prefix,
-            prefix: "open ",
-            when: .listening,
-            priority: 200,
-            action: .openApp
-        ),
-        CommandSpec(
-            id: "builtin.quit-frontmost",
-            builtin: true,
-            phrases: ["quit application", "quit the application", "quit app"],
-            match: .exact,
-            when: .listening,
-            priority: 210,
-            action: .quitFrontmost
-        ),
-        CommandSpec(
-            id: "builtin.quit-app",
-            builtin: true,
-            phrases: ["quit"],
-            match: .prefix,
-            prefix: "quit ",
-            when: .listening,
-            priority: 220,
-            action: .quitApp
-        ),
-        CommandSpec(
-            id: "builtin.capitalize",
-            builtin: true,
-            phrases: ["capitalize that", "capital that", "capitalise that"],
-            match: .exact,
-            when: .listening,
-            priority: 230,
-            action: .capitalize
-        ),
-        CommandSpec(
-            id: "builtin.uppercase",
-            builtin: true,
-            phrases: ["uppercase that", "upper case that", "all caps that"],
-            match: .exact,
-            when: .listening,
-            priority: 231,
-            action: .uppercase
-        ),
-        CommandSpec(
-            id: "builtin.lowercase",
-            builtin: true,
-            phrases: ["lowercase that", "lower case that", "all lowercase that"],
-            match: .exact,
-            when: .listening,
-            priority: 232,
-            action: .lowercase
-        )
-    ]
+    public static var builtIns: [CommandSpec] { DefaultCommands.load() }
+
+    public func appArgument(normalized: String) -> String? {
+        for phrase in phrases {
+            guard let parts = Self.appSlotParts(phrase) else { continue }
+            if parts.head.isEmpty { continue }
+            let head = parts.head + " "
+            guard normalized.hasPrefix(head) else { continue }
+            var rest = String(normalized.dropFirst(head.count))
+            if !parts.tail.isEmpty {
+                let tail = " " + parts.tail
+                guard rest.hasSuffix(tail) else { continue }
+                rest = String(rest.dropLast(tail.count))
+            }
+            let name = rest.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { return name }
+        }
+        return nil
+    }
+
+    public func holdsAppSlot(normalized: String) -> Bool {
+        for phrase in phrases {
+            guard let parts = Self.appSlotParts(phrase) else { continue }
+            if parts.head.isEmpty { continue }
+            if normalized == parts.head { return true }
+            if normalized.hasPrefix(parts.head + " ") { return true }
+        }
+        return false
+    }
+
+    private static func appSlotParts(_ phrase: String) -> (head: String, tail: String)? {
+        guard let range = phrase.range(of: "{app}") else { return nil }
+        let head = TranscriptNormalizer.normalize(String(phrase[..<range.lowerBound]))
+        let tail = TranscriptNormalizer.normalize(String(phrase[range.upperBound...]))
+        return (head, tail)
+    }
 }

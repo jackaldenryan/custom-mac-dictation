@@ -1,0 +1,13 @@
+{
+  "action": "stopListening",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.stop-listening",
+  "match": "exact",
+  "phrases": [
+    "stop listening dictation",
+    "stop listening mac"
+  ],
+  "priority": 1,
+  "when": "always"
+}

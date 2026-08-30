@@ -1,0 +1,12 @@
+{
+  "action": "keyPressGrammar",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.press",
+  "match": "keyPressGrammar",
+  "phrases": [
+    "press"
+  ],
+  "priority": 190,
+  "when": "listening"
+}

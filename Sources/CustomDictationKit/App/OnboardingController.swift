@@ -168,9 +168,11 @@ private struct OnboardingView: View {
         case .done:
             _ = store.update {
                 $0.hasCompletedOnboarding = true
-                $0.launchAtLogin = true
+                $0.launchAtLogin = AppRuntime.isLocalTest ? false : true
             }
-            try? SMAppService.mainApp.register()
+            if !AppRuntime.isLocalTest {
+                try? SMAppService.mainApp.register()
+            }
             onFinished()
         }
     }

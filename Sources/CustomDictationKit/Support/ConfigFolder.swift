@@ -3,11 +3,14 @@ import Darwin
 import Foundation
 
 public enum ConfigFolder {
-    public static let folderName = ".custom-dictation-config"
+    public static var folderName: String { AppRuntime.configFolderName }
     public static let didChange = Notification.Name("CustomDictation.configDidChange")
 
     public static var root: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(folderName, isDirectory: true)
+        if let override = ProcessInfo.processInfo.environment["CUSTOM_DICTATION_CONFIG"], !override.isEmpty {
+            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(folderName, isDirectory: true)
     }
 
     public static var commandsDirectory: URL {
@@ -16,6 +19,18 @@ public enum ConfigFolder {
 
     public static var vocabularyDirectory: URL {
         root.appendingPathComponent("vocabulary", isDirectory: true)
+    }
+
+    public static var delaysURL: URL {
+        root.appendingPathComponent("delays.json")
+    }
+
+    public static var postProcessURL: URL {
+        root.appendingPathComponent("post-process.json")
+    }
+
+    public static var prefsURL: URL {
+        root.appendingPathComponent("settings.json")
     }
 
     private static let encoder: JSONEncoder = {
@@ -32,9 +47,7 @@ public enum ConfigFolder {
         try? fm.createDirectory(at: commandsDirectory, withIntermediateDirectories: true)
         try? fm.createDirectory(at: vocabularyDirectory, withIntermediateDirectories: true)
         let readme = root.appendingPathComponent("README.md")
-        if !fm.fileExists(atPath: readme.path) {
-            try? readmeText.data(using: .utf8)?.write(to: readme, options: .atomic)
-        }
+        try? readmeText.data(using: .utf8)?.write(to: readme, options: .atomic)
         seedMissingBuiltins()
     }
 
@@ -81,15 +94,13 @@ public enum ConfigFolder {
     public static func writeCommands(_ commands: [CommandSpec]) {
         ignoreWatcherUntil = Date().addingTimeInterval(0.4)
         let fm = FileManager.default
-        let wanted = Set(commands.filter { !$0.builtin }.map { fileName(for: $0.id) })
+        let wanted = Set(commands.map { fileName(for: $0.id) })
         for url in jsonFiles(in: commandsDirectory) {
-            let name = url.lastPathComponent
-            if name.hasPrefix("builtin.") { continue }
-            if !wanted.contains(name) {
+            if !wanted.contains(url.lastPathComponent) {
                 try? fm.removeItem(at: url)
             }
         }
-        for spec in commands where !spec.builtin {
+        for spec in commands {
             let url = commandsDirectory.appendingPathComponent(fileName(for: spec.id))
             try? writeJSON(spec, to: url)
         }
@@ -110,15 +121,56 @@ public enum ConfigFolder {
         }
     }
 
-    public static func migrateIfNeeded(commands: [CommandSpec], vocabulary: [VocabEntry]) {
+    public static func migrateIfNeeded(settings: AppSettings) {
         let userFiles = jsonFiles(in: commandsDirectory).filter { !$0.lastPathComponent.hasPrefix("builtin.") }
         if userFiles.isEmpty {
-            let extras = commands.filter { !$0.builtin }
+            let extras = settings.commands.filter { !$0.builtin }
             if !extras.isEmpty { writeCommands(extras) }
         }
-        if jsonFiles(in: vocabularyDirectory).isEmpty, !vocabulary.isEmpty {
-            writeVocabulary(vocabulary)
+        if jsonFiles(in: vocabularyDirectory).isEmpty, !settings.vocabulary.isEmpty {
+            writeVocabulary(settings.vocabulary)
         }
+        if !FileManager.default.fileExists(atPath: delaysURL.path) {
+            writeDelays(DelaySettings(settings))
+        }
+        if !FileManager.default.fileExists(atPath: postProcessURL.path) {
+            writePostProcess(activeID: settings.activePostProcessID, configs: settings.postProcessConfigs)
+        }
+        if !FileManager.default.fileExists(atPath: prefsURL.path) {
+            writePrefs(PrefsSettings(settings))
+        }
+    }
+
+    public static func loadDelays() -> DelaySettings? {
+        guard let data = try? Data(contentsOf: delaysURL) else { return nil }
+        return try? JSONDecoder().decode(DelaySettings.self, from: data)
+    }
+
+    public static func writeDelays(_ delays: DelaySettings) {
+        ignoreWatcherUntil = Date().addingTimeInterval(0.4)
+        try? writeJSON(delays, to: delaysURL)
+    }
+
+    public static func loadPostProcess() -> (activeID: String, configs: [PostProcessConfig])? {
+        guard let data = try? Data(contentsOf: postProcessURL),
+              let file = try? JSONDecoder().decode(PostProcessFile.self, from: data)
+        else { return nil }
+        return (file.activeID, file.configs)
+    }
+
+    public static func writePostProcess(activeID: String, configs: [PostProcessConfig]) {
+        ignoreWatcherUntil = Date().addingTimeInterval(0.4)
+        try? writeJSON(PostProcessFile(activeID: activeID, configs: configs), to: postProcessURL)
+    }
+
+    public static func loadPrefs() -> PrefsSettings? {
+        guard let data = try? Data(contentsOf: prefsURL) else { return nil }
+        return try? JSONDecoder().decode(PrefsSettings.self, from: data)
+    }
+
+    public static func writePrefs(_ prefs: PrefsSettings) {
+        ignoreWatcherUntil = Date().addingTimeInterval(0.4)
+        try? writeJSON(prefs, to: prefsURL)
     }
 
     public static func export(to destination: URL) throws {
@@ -142,6 +194,7 @@ public enum ConfigFolder {
 
     public static func startWatching() {
         stopWatching()
+        watch(root)
         watch(commandsDirectory)
         watch(vocabularyDirectory)
     }
@@ -203,11 +256,44 @@ public enum ConfigFolder {
     private static let readmeText = """
     # Custom Dictation config
 
-    This folder is the source of truth for commands and vocabulary.
+    This folder is the source of truth for commands, vocabulary, delays, post-process, and other settings.
 
-    Path: `~/.custom-dictation-config`
+     Path: `~/.custom-dictation-config` (local test builds use `~/.custom-dictation-config-local`)
 
     Edit files here (or have an agent edit them). The app reloads on change. Import in the app replaces this folder. Export copies it.
+
+    ## delays.json
+
+    All pause/delay times, in seconds.
+
+    ```json
+    {
+      "finalizeDelaySeconds": 0.4,
+      "keyRepeatDelaySeconds": 0.08,
+      "lonePunctuationDelaySeconds": 1.0
+    }
+    ```
+
+    ## post-process.json
+
+    Named JavaScript configs. `function process(ctx)` returns the string to type, or null to ignore.
+
+    ```json
+    {
+      "activeID": "default",
+      "configs": [
+        {
+          "id": "default",
+          "name": "Default",
+          "script": "function process(ctx) { return ctx.text; }"
+        }
+      ]
+    }
+    ```
+
+    ## settings.json
+
+    Microphone, login, onboarding, and punctuation mode.
 
     ## commands/
 
@@ -227,13 +313,17 @@ public enum ConfigFolder {
     }
     ```
 
-    `match`: `exact` | `prefix` | `keyPressGrammar`  
-    `when`: `always` (start/stop) | `listening`  
-    `action`: `startListening` `stopListening` `keyPressGrammar` `openApp` `quitApp` `quitFrontmost` `capitalize` `uppercase` `lowercase` `pasteText` `shortcut` `openFile`
+     `match`: `exact` | `prefix` | `keyPressGrammar` | `appSlot`  
+     `when`: `always` (start/stop) | `listening`  
+     `action`: `startListening` `stopListening` `keyPressGrammar` `openApp` `quitApp` `quitFrontmost` `capitalize` `uppercase` `lowercase` `pasteText` `shortcut` `openFile` `click`
 
-    Lower `priority` runs first among the same stage. User `exact` commands (priority 100) still beat built-in press/open/quit, matching the previous app.
+     Put `{app}` in a phrase with `match` `appSlot` and action `openApp` or `quitApp`. Example: `"open {app}"`.
 
-    Built-in files are `builtin.*.json`. Delete or edit them to change those behaviors. Use Restore built-in commands in the app to put them back.
+     For `click`, set `clickButton` to `left` or `right`, `clickTimes` (1 or 2), and `modifierFlags` (same numbers as shortcuts). Example phrases: `command click`.
+
+     Lower `priority` runs first among the same stage. User `exact` commands (priority 100) still beat press/open/quit.
+
+     Shipped defaults are `builtin.*.json`. Edit, disable, or delete them. Restore built-ins in the app puts the shipped files back.
 
     ## vocabulary/
 
@@ -243,10 +333,65 @@ public enum ConfigFolder {
     {
       "word": "Zep",
       "ipa": [],
-      "locale": "en_US"
+      "locale": "en_US",
+      "enabled": true
     }
     ```
 
     Restart listening after vocabulary changes.
     """
+}
+
+public struct DelaySettings: Codable, Equatable, Sendable {
+    public var finalizeDelaySeconds: Double
+    public var keyRepeatDelaySeconds: Double
+    public var lonePunctuationDelaySeconds: Double
+
+    public init(finalizeDelaySeconds: Double, keyRepeatDelaySeconds: Double, lonePunctuationDelaySeconds: Double) {
+        self.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(finalizeDelaySeconds)
+        self.keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
+        self.lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
+    }
+
+    public init(_ settings: AppSettings) {
+        self.init(
+            finalizeDelaySeconds: settings.finalizeDelaySeconds,
+            keyRepeatDelaySeconds: settings.keyRepeatDelaySeconds,
+            lonePunctuationDelaySeconds: settings.lonePunctuationDelaySeconds
+        )
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(
+            try c.decodeIfPresent(Double.self, forKey: .finalizeDelaySeconds) ?? AppSettings.defaultFinalizeDelaySeconds
+        )
+        keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(
+            try c.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? AppSettings.defaultKeyRepeatDelaySeconds
+        )
+        lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(
+            try c.decodeIfPresent(Double.self, forKey: .lonePunctuationDelaySeconds) ?? AppSettings.defaultLonePunctuationDelaySeconds
+        )
+    }
+}
+
+public struct PrefsSettings: Codable, Equatable, Sendable {
+    public var hasCompletedOnboarding: Bool
+    public var microphoneUID: String?
+    public var punctuationModes: [String: PunctuationMode]
+    public var launchAtLogin: Bool
+    public var preferredListeningState: ListeningState
+
+    public init(_ settings: AppSettings) {
+        hasCompletedOnboarding = settings.hasCompletedOnboarding
+        microphoneUID = settings.microphoneUID
+        punctuationModes = settings.punctuationModes
+        launchAtLogin = settings.launchAtLogin
+        preferredListeningState = settings.preferredListeningState
+    }
+}
+
+struct PostProcessFile: Codable, Equatable, Sendable {
+    var activeID: String
+    var configs: [PostProcessConfig]
 }

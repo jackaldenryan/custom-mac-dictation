@@ -1,0 +1,14 @@
+{
+  "action": "quitFrontmost",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.quit-frontmost",
+  "match": "exact",
+  "phrases": [
+    "quit application",
+    "quit the application",
+    "quit app"
+  ],
+  "priority": 210,
+  "when": "listening"
+}

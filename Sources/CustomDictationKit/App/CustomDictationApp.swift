@@ -8,7 +8,7 @@ public enum CustomDictationApp {
         let delegate = AppDelegate()
         AppDelegate.retained = delegate
         app.delegate = delegate
-        app.setActivationPolicy(.accessory)
+        app.setActivationPolicy(.regular)
         app.run()
     }
 }
@@ -27,7 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
-        DiagnosticLog.line("Launch version \(AppVersion.current) ax=\(Permissions.accessibilityGranted(prompt: false))")
+        if AppRuntime.isLocalTest {
+            _ = Permissions.accessibilityGranted(prompt: true)
+        }
+        DiagnosticLog.line("Launch version \(AppVersion.current) ax=\(Permissions.accessibilityGranted(prompt: false)) local=\(AppRuntime.isLocalTest)")
         sleepObserver.onWillSleep = { [weak self] in
             Task { await self?.session.stopCompletely(persist: false) }
         }
@@ -35,12 +38,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if store.settings.hasCompletedOnboarding {
             presentStatusItem()
-            if store.settings.launchAtLogin {
+            showMainWindow()
+            if store.settings.launchAtLogin, !AppRuntime.isLocalTest {
                 try? SMAppService.mainApp.register()
             }
             Task {
                 await session.restorePreferredState()
-                await updater.check(interactive: false)
+                if !AppRuntime.isLocalTest {
+                    await updater.check(interactive: false)
+                }
             }
         } else {
             NSApp.setActivationPolicy(.regular)

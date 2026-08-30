@@ -1,0 +1,16 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 1,
+  "enabled": true,
+  "id": "builtin.control-click",
+  "match": "exact",
+  "modifierFlags": 262144,
+  "phrases": [
+    "control click",
+    "press control click"
+  ],
+  "priority": 183,
+  "when": "listening"
+}

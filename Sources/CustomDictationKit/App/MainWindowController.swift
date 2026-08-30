@@ -19,7 +19,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let hosting = NSHostingController(rootView: root)
         hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Custom Dictation"
+        window.title = AppRuntime.displayName
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 720, height: 480)
@@ -380,14 +380,31 @@ private struct AppRootView: View {
                     .textFieldStyle(.roundedBorder)
                 Button("Add") { addWord() }
                     .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Enable") { setSelectedVocabEnabled(true) }
+                    .disabled(selectedVocab.isEmpty)
+                Button("Disable") { setSelectedVocabEnabled(false) }
+                    .disabled(selectedVocab.isEmpty)
                 Button("Delete") { deleteSelectedVocab() }
                     .disabled(selectedVocab.isEmpty)
             }
             TextField("Search", text: $vocabSearch)
                 .textFieldStyle(.roundedBorder)
             Table(filteredVocabulary, selection: $selectedVocab) {
+                TableColumn("") { entry in
+                    Toggle("", isOn: vocabSelectedBinding(entry.id))
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                }
+                .width(24)
+                TableColumn("On") { entry in
+                    Toggle("", isOn: vocabEnabledBinding(entry.id))
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                }
+                .width(36)
                 TableColumn("Word") { entry in
                     Text(entry.word)
+                        .foregroundStyle(entry.enabled ? .primary : .secondary)
                 }
                 TableColumn("IPA") { entry in
                     Text(entry.ipa.joined(separator: ", "))
@@ -395,7 +412,7 @@ private struct AppRootView: View {
                 }
             }
             .onDeleteCommand { deleteSelectedVocab() }
-            Text("Select a row and press Delete. Restart listening after changes. Files live in ~/.custom-dictation-config/vocabulary.")
+            Text("Check rows, then Enable, Disable, or Delete. Off words stay in the folder but are not used. Restart listening after changes.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -420,28 +437,43 @@ private struct AppRootView: View {
                 commandDetailField
                 Button("Add") { addCommand() }
                     .disabled(!canAddCommand)
+                Button("Enable") { setSelectedCommandsEnabled(true) }
+                    .disabled(selectedCommands.isEmpty)
+                Button("Disable") { setSelectedCommandsEnabled(false) }
+                    .disabled(selectedCommands.isEmpty)
                 Button("Delete") { deleteSelectedCommands() }
-                    .disabled(selectedCommands.isEmpty || selectedCommands.allSatisfy { id in
-                        settings.commands.first { $0.id == id }?.builtin == true
-                    })
+                    .disabled(selectedCommands.isEmpty)
             }
             TextField("Search", text: $commandSearch)
                 .textFieldStyle(.roundedBorder)
             Table(filteredCommands, selection: $selectedCommands) {
+                TableColumn("") { command in
+                    Toggle("", isOn: commandSelectedBinding(command.id))
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                }
+                .width(24)
+                TableColumn("On") { command in
+                    Toggle("", isOn: commandEnabledBinding(command.id))
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                }
+                .width(36)
                 TableColumn("Phrase") { command in
                     Text(command.title)
+                        .foregroundStyle(command.enabled ? .primary : .secondary)
                 }
                 TableColumn("Action") { command in
                     Text(command.actionTitle)
                         .foregroundStyle(.secondary)
                 }
-                TableColumn("Kind") { command in
-                    Text(command.builtin ? "Built-in" : "Custom")
+                TableColumn("Source") { command in
+                    Text(command.builtin ? "Shipped" : "Yours")
                         .foregroundStyle(.secondary)
                 }
             }
             .onDeleteCommand { deleteSelectedCommands() }
-            Text("Built-in commands are JSON files too. Editing them does not change engine behavior beyond the phrases and match rules in the file. Select a custom row and press Delete.")
+            Text("Shipped commands come with the app as JSON. Same format as ones you add. Check rows, then Enable, Disable, or Delete. Restore built-ins puts shipped files back.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -494,7 +526,7 @@ private struct AppRootView: View {
                 }
             }
             DisclosureGroup("Folder format", isExpanded: $showFormat) {
-                Text("One JSON file per command in commands/, one JSON file per word in vocabulary/. See README.md in the folder. Import replaces ~/.custom-dictation-config. You can also replace that folder yourself.")
+                Text("commands/ and vocabulary/ are one JSON file each. delays.json holds pause times. post-process.json holds the JavaScript configs. settings.json holds microphone and login. See README.md in the folder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -524,6 +556,10 @@ private struct AppRootView: View {
                     .lineLimit(1)
                 Button("Choose…") { chooseCommandFile() }
             }
+        case .click:
+            TextField("command, right, double", text: $newShortcut)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140)
         }
     }
 
@@ -713,10 +749,12 @@ private struct AppRootView: View {
             set: { newValue in
                 settings.launchAtLogin = newValue
                 persist()
-                if newValue {
-                    try? SMAppService.mainApp.register()
-                } else {
-                    try? SMAppService.mainApp.unregister()
+                if !AppRuntime.isLocalTest {
+                    if newValue {
+                        try? SMAppService.mainApp.register()
+                    } else {
+                        try? SMAppService.mainApp.unregister()
+                    }
                 }
             }
         )
@@ -865,6 +903,35 @@ private struct AppRootView: View {
         vocabMessage = "Added \(word). Restart listening to apply."
     }
 
+    private func vocabSelectedBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { selectedVocab.contains(id) },
+            set: { on in
+                if on { selectedVocab.insert(id) } else { selectedVocab.remove(id) }
+            }
+        )
+    }
+
+    private func vocabEnabledBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { settings.vocabulary.first { $0.id == id }?.enabled ?? true },
+            set: { on in
+                if let index = settings.vocabulary.firstIndex(where: { $0.id == id }) {
+                    settings.vocabulary[index].enabled = on
+                    persist()
+                }
+            }
+        )
+    }
+
+    private func setSelectedVocabEnabled(_ enabled: Bool) {
+        for index in settings.vocabulary.indices where selectedVocab.contains(settings.vocabulary[index].id) {
+            settings.vocabulary[index].enabled = enabled
+        }
+        persist()
+        vocabMessage = enabled ? "Enabled selected words." : "Disabled selected words."
+    }
+
     private func deleteSelectedVocab() {
         let ids = selectedVocab
         settings.vocabulary.removeAll { ids.contains($0.id) }
@@ -883,6 +950,8 @@ private struct AppRootView: View {
             return parseShortcut(newShortcut) != nil
         case .openFile:
             return !newFilePath.isEmpty
+        case .click:
+            return parseClick(newShortcut) != nil
         }
     }
 
@@ -897,6 +966,7 @@ private struct AppRootView: View {
                 case .pasteText: return .pasteText
                 case .shortcut: return .shortcut
                 case .openFile: return .openFile
+                case .click: return .click
                 }
             }()
         )
@@ -913,6 +983,14 @@ private struct AppRootView: View {
         case .openFile:
             command.filePath = newFilePath
             command.fileBookmark = newFileBookmark
+        case .click:
+            guard let parsed = parseClick(newShortcut) else {
+                commandMessage = "Could not parse that click."
+                return
+            }
+            command.modifierFlags = parsed.flags
+            command.clickButton = parsed.button
+            command.clickTimes = parsed.times
         }
         let newNormalized = command.phrases.map(TranscriptNormalizer.normalize)
         settings.commands.removeAll { existing in
@@ -929,14 +1007,41 @@ private struct AppRootView: View {
         commandMessage = "Added command. Restart listening to apply."
     }
 
-    private func deleteSelectedCommands() {
-        let ids = selectedCommands
-        settings.commands.removeAll { command in
-            ids.contains(command.id) && !command.builtin
+    private func commandSelectedBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { selectedCommands.contains(id) },
+            set: { on in
+                if on { selectedCommands.insert(id) } else { selectedCommands.remove(id) }
+            }
+        )
+    }
+
+    private func commandEnabledBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { settings.commands.first { $0.id == id }?.enabled ?? true },
+            set: { on in
+                if let index = settings.commands.firstIndex(where: { $0.id == id }) {
+                    settings.commands[index].enabled = on
+                    persist()
+                }
+            }
+        )
+    }
+
+    private func setSelectedCommandsEnabled(_ enabled: Bool) {
+        for index in settings.commands.indices where selectedCommands.contains(settings.commands[index].id) {
+            settings.commands[index].enabled = enabled
         }
         persist()
+        commandMessage = enabled ? "Enabled selected commands." : "Disabled selected commands."
+    }
+
+    private func deleteSelectedCommands() {
+        let ids = selectedCommands
+        settings.commands.removeAll { ids.contains($0.id) }
+        persist()
         selectedCommands = []
-        commandMessage = "Removed selected custom commands."
+        commandMessage = "Removed selected commands."
     }
 
     private func chooseCommandFile() {
@@ -947,6 +1052,33 @@ private struct AppRootView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         newFilePath = url.path
         newFileBookmark = try? url.bookmarkData(options: .minimalBookmark)
+    }
+
+    private func parseClick(_ text: String) -> (flags: UInt64, button: String, times: Int)? {
+        let normalized = TranscriptNormalizer.normalize(text)
+        var flags: NSEvent.ModifierFlags = []
+        var leftover: [String] = []
+        for token in normalized.split(separator: " ").map(String.init) {
+            switch token {
+            case "command", "cmd": flags.insert(.command)
+            case "shift": flags.insert(.shift)
+            case "option", "alt": flags.insert(.option)
+            case "control", "ctrl": flags.insert(.control)
+            case "and", "the", "press": continue
+            default: leftover.append(token)
+            }
+        }
+        let joined = leftover.joined(separator: " ")
+        switch joined {
+        case "", "click", "left", "left click":
+            return (UInt64(flags.rawValue), "left", 1)
+        case "right", "right click":
+            return (UInt64(flags.rawValue), "right", 1)
+        case "double", "double click":
+            return (UInt64(flags.rawValue), "left", 2)
+        default:
+            return nil
+        }
     }
 
     private func parseShortcut(_ text: String) -> KeyPressCommand? {

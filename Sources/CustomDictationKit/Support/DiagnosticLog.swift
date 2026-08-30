@@ -6,7 +6,8 @@ public enum DiagnosticLog {
         let folder = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Logs/CustomDictation", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("dictation.log")
+        let name = AppRuntime.isLocalTest ? "dictation-local.log" : "dictation.log"
+        return folder.appendingPathComponent(name)
     }
 
     public static func line(_ message: String) {

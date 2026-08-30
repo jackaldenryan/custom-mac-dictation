@@ -66,8 +66,10 @@ public final class ListeningSession: ObservableObject {
             lastMicrophoneUID = settings.microphoneUID
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
-                vocabulary: settings.vocabulary,
-                commandPhrases: settings.commands.flatMap(\.phrases) + AppNameResolver.commandPhrases()
+                vocabulary: settings.vocabulary.filter(\.enabled),
+                commandPhrases: settings.commands.filter(\.enabled).flatMap(\.phrases).map {
+                    $0.replacingOccurrences(of: " {app}", with: "").replacingOccurrences(of: "{app}", with: "")
+                } + AppNameResolver.commandPhrases()
             )
             guard generation == startGeneration else { return }
             DiagnosticLog.line("Listening")

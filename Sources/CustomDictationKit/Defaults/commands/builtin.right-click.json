@@ -1,0 +1,15 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "right",
+  "clickTimes": 1,
+  "enabled": true,
+  "id": "builtin.right-click",
+  "match": "exact",
+  "phrases": [
+    "right click",
+    "press right click"
+  ],
+  "priority": 184,
+  "when": "listening"
+}

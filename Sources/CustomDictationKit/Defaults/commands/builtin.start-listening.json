@@ -1,0 +1,13 @@
+{
+  "action": "startListening",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.start-listening",
+  "match": "exact",
+  "phrases": [
+    "start listening dictation",
+    "start listening mac"
+  ],
+  "priority": 0,
+  "when": "always"
+}

@@ -1,0 +1,12 @@
+{
+  "action": "quitApp",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.quit-app",
+  "match": "appSlot",
+  "phrases": [
+    "quit {app}"
+  ],
+  "priority": 220,
+  "when": "listening"
+}

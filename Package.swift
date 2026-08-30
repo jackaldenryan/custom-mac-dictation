@@ -14,7 +14,8 @@ let package = Package(
     targets: [
         .target(
             name: "CustomDictationKit",
-            path: "Sources/CustomDictationKit"
+            path: "Sources/CustomDictationKit",
+            resources: [.copy("Defaults")]
         ),
         .executableTarget(
             name: "CustomDictation",

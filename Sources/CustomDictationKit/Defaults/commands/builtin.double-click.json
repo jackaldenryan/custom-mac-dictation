@@ -1,0 +1,15 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 2,
+  "enabled": true,
+  "id": "builtin.double-click",
+  "match": "exact",
+  "phrases": [
+    "double click",
+    "press double click"
+  ],
+  "priority": 185,
+  "when": "listening"
+}

@@ -1,0 +1,14 @@
+{
+  "action": "lowercase",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.lowercase",
+  "match": "exact",
+  "phrases": [
+    "lowercase that",
+    "lower case that",
+    "all lowercase that"
+  ],
+  "priority": 232,
+  "when": "listening"
+}

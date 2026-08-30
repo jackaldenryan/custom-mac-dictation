@@ -84,7 +84,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
-        menu.addItem(actionItem("Quit Custom Dictation", #selector(quit)))
+        menu.addItem(actionItem("Quit \(AppRuntime.displayName)", #selector(quit)))
     }
 
     public func menuWillOpen(_ menu: NSMenu) {

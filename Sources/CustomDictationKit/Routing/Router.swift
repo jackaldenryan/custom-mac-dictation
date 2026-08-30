@@ -86,6 +86,8 @@ public enum Router {
         case .prefix:
             let prefix = command.prefix ?? ""
             return !prefix.isEmpty && normalized.hasPrefix(prefix) && normalized.count > prefix.count
+        case .appSlot:
+            return command.appArgument(normalized: normalized) != nil
         case .keyPressGrammar:
             return KeyPressGrammar.parse(transcript) != nil
         }
@@ -97,12 +99,16 @@ public enum Router {
             return command.phrases.contains { phrase in
                 let name = TranscriptNormalizer.normalize(phrase)
                 if name == normalized { return true }
-                return name.hasPrefix(normalized) && normalized.count >= 3
+                guard name.hasPrefix(normalized), normalized.count >= 3 else { return false }
+                let rest = name.dropFirst(normalized.count)
+                return rest.first == " " || rest.isEmpty
             }
         case .prefix:
             let prefix = command.prefix ?? ""
             let word = prefix.trimmingCharacters(in: .whitespaces)
             return normalized == word || (!prefix.isEmpty && normalized.hasPrefix(prefix)) || (!word.isEmpty && normalized.hasPrefix(word + " "))
+        case .appSlot:
+            return command.holdsAppSlot(normalized: normalized)
         case .keyPressGrammar:
             return normalized == "press" || normalized.hasPrefix("press ")
         }
@@ -136,8 +142,15 @@ public enum Router {
                 intervalSeconds: settings.keyRepeatDelaySeconds
             )
             return .handled
+        case .click:
+            Typist.click(
+                flags: Typist.cgFlags(from: command.modifierFlags ?? 0),
+                right: command.clickButton == "right",
+                times: command.clickTimes ?? 1
+            )
+            return .handled
         case .openApp:
-            let name = argument(normalized, prefix: command.prefix ?? "open ")
+            let name = command.appArgument(normalized: normalized) ?? argument(normalized, prefix: command.prefix ?? "open ")
             do {
                 try AppController.open(spokenName: name)
                 return .handled
@@ -154,7 +167,7 @@ public enum Router {
                 return .failed("I could not quit that application")
             }
         case .quitApp:
-            let name = argument(normalized, prefix: command.prefix ?? "quit ")
+            let name = command.appArgument(normalized: normalized) ?? argument(normalized, prefix: command.prefix ?? "quit ")
             do {
                 try AppController.quit(spokenName: name)
                 return .handled

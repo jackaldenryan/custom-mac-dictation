@@ -1,0 +1,16 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 1,
+  "enabled": true,
+  "id": "builtin.shift-click",
+  "match": "exact",
+  "modifierFlags": 131072,
+  "phrases": [
+    "shift click",
+    "press shift click"
+  ],
+  "priority": 182,
+  "when": "listening"
+}

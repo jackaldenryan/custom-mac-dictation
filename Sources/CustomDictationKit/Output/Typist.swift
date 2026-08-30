@@ -69,6 +69,39 @@ public enum Typist {
         pressKey(124, flags: [])
     }
 
+    public static func click(flags: CGEventFlags, right: Bool, times: Int = 1) {
+        if !AXIsProcessTrusted() {
+            DiagnosticLog.line("Click skipped; Accessibility not granted")
+            return
+        }
+        let repeats = min(75, max(1, times))
+        let point = cgMouseLocation()
+        let source = CGEventSource(stateID: .privateState)
+        source?.localEventsSuppressionInterval = 0
+        let button: CGMouseButton = right ? .right : .left
+        let downType: CGEventType = right ? .rightMouseDown : .leftMouseDown
+        let upType: CGEventType = right ? .rightMouseUp : .leftMouseUp
+        postModifiers(source: source, flags: flags, keyDown: true)
+        for index in 1...repeats {
+            let down = CGEvent(mouseEventSource: source, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
+            let up = CGEvent(mouseEventSource: source, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
+            down?.flags = flags
+            up?.flags = flags
+            down?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
+            up?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
+            down?.post(tap: .cghidEventTap)
+            up?.post(tap: .cghidEventTap)
+        }
+        postModifiers(source: source, flags: flags, keyDown: false)
+        DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
+    }
+
+    private static func cgMouseLocation() -> CGPoint {
+        let loc = NSEvent.mouseLocation
+        let maxY = NSScreen.screens.map(\.frame.maxY).max() ?? loc.y
+        return CGPoint(x: loc.x, y: maxY - loc.y)
+    }
+
     public static func pressShortcut(keyCode: Int, modifierFlags: UInt64) {
         press(keyCode: UInt16(keyCode), flags: cgFlags(from: modifierFlags))
     }

@@ -1,0 +1,14 @@
+{
+  "action": "uppercase",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.uppercase",
+  "match": "exact",
+  "phrases": [
+    "uppercase that",
+    "upper case that",
+    "all caps that"
+  ],
+  "priority": 231,
+  "when": "listening"
+}

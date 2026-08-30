@@ -1,0 +1,17 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 1,
+  "enabled": true,
+  "id": "builtin.option-click",
+  "match": "exact",
+  "modifierFlags": 524288,
+  "phrases": [
+    "option click",
+    "alt click",
+    "press option click"
+  ],
+  "priority": 181,
+  "when": "listening"
+}

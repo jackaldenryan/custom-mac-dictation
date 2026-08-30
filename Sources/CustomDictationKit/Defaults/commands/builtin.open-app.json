@@ -1,0 +1,12 @@
+{
+  "action": "openApp",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.open-app",
+  "match": "appSlot",
+  "phrases": [
+    "open {app}"
+  ],
+  "priority": 200,
+  "when": "listening"
+}

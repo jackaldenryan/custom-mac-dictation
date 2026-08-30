@@ -1,0 +1,14 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 1,
+  "enabled": true,
+  "id": "builtin.click",
+  "match": "exact",
+  "phrases": [
+    "press click"
+  ],
+  "priority": 186,
+  "when": "listening"
+}

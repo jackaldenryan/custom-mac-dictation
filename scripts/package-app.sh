@@ -19,6 +19,9 @@ rm -rf "$dist"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
 sed "s/VERSION_PLACEHOLDER/$version/g" "$root/Resources/Info.plist" > "$app/Contents/Info.plist"
+cp "$root/Resources/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
+mkdir -p "$app/Contents/Resources/default-commands"
+cp "$root/Sources/CustomDictationKit/Defaults/commands/"*.json "$app/Contents/Resources/default-commands/" 2>/dev/null || true
 cp "$bin" "$app/Contents/MacOS/$binary_name"
 chmod +x "$app/Contents/MacOS/$binary_name"
 

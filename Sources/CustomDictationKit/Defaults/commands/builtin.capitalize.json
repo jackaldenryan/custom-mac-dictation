@@ -1,0 +1,14 @@
+{
+  "action": "capitalize",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.capitalize",
+  "match": "exact",
+  "phrases": [
+    "capitalize that",
+    "capital that",
+    "capitalise that"
+  ],
+  "priority": 230,
+  "when": "listening"
+}

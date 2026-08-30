@@ -11,11 +11,25 @@ public struct VocabEntry: Codable, Equatable, Sendable, Identifiable {
     public var word: String
     public var ipa: [String]
     public var locale: String
+    public var enabled: Bool
 
-    public init(word: String, ipa: [String] = [], locale: String = "en_US") {
+    public init(word: String, ipa: [String] = [], locale: String = "en_US", enabled: Bool = true) {
         self.word = word
         self.ipa = ipa
         self.locale = locale
+        self.enabled = enabled
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case word, ipa, locale, enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        word = try c.decode(String.self, forKey: .word)
+        ipa = try c.decodeIfPresent([String].self, forKey: .ipa) ?? []
+        locale = try c.decodeIfPresent(String.self, forKey: .locale) ?? "en_US"
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
     }
 }
 
@@ -23,6 +37,7 @@ public enum CustomCommandKind: String, Codable, CaseIterable, Sendable, Identifi
     case pasteText
     case shortcut
     case openFile
+    case click
 
     public var id: String { rawValue }
 
@@ -31,6 +46,7 @@ public enum CustomCommandKind: String, Codable, CaseIterable, Sendable, Identifi
         case .pasteText: return "Paste text"
         case .shortcut: return "Shortcut"
         case .openFile: return "Open file"
+        case .click: return "Click"
         }
     }
 }
@@ -201,10 +217,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public mutating func ensurePostProcessDefaults() {
-        if let index = postProcessConfigs.firstIndex(where: { $0.id == PostProcessConfig.defaultID }) {
-            postProcessConfigs[index] = .builtInDefault
-        } else {
+        if !postProcessConfigs.contains(where: { $0.id == PostProcessConfig.defaultID }) {
             postProcessConfigs.insert(.builtInDefault, at: 0)
+        }
+        if postProcessConfigs.isEmpty {
+            postProcessConfigs = [.builtInDefault]
         }
         if !postProcessConfigs.contains(where: { $0.id == activePostProcessID }) {
             activePostProcessID = PostProcessConfig.defaultID
@@ -255,8 +272,9 @@ public final class SettingsStore: @unchecked Sendable {
     private var cached: AppSettings
 
     public init(url: URL? = nil) {
+        let supportName = AppRuntime.isLocalTest ? "CustomDictationLocal" : "CustomDictation"
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("CustomDictation", isDirectory: true)
+            .appendingPathComponent(supportName, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         self.url = url ?? folder.appendingPathComponent("settings.json")
         if let data = try? Data(contentsOf: self.url),
@@ -267,7 +285,7 @@ public final class SettingsStore: @unchecked Sendable {
             cached = .default
         }
         ConfigFolder.ensureLayout()
-        ConfigFolder.migrateIfNeeded(commands: cached.commands, vocabulary: cached.vocabulary)
+        ConfigFolder.migrateIfNeeded(settings: cached)
         applyFolder()
         ConfigFolder.startWatching()
     }
@@ -280,6 +298,23 @@ public final class SettingsStore: @unchecked Sendable {
         let loaded = ConfigFolder.loadCommands()
         cached.commands = loaded.isEmpty ? CommandSpec.builtIns : loaded
         cached.vocabulary = ConfigFolder.loadVocabulary()
+        if let delays = ConfigFolder.loadDelays() {
+            cached.finalizeDelaySeconds = delays.finalizeDelaySeconds
+            cached.keyRepeatDelaySeconds = delays.keyRepeatDelaySeconds
+            cached.lonePunctuationDelaySeconds = delays.lonePunctuationDelaySeconds
+        }
+        if let post = ConfigFolder.loadPostProcess() {
+            cached.activePostProcessID = post.activeID
+            cached.postProcessConfigs = post.configs
+            cached.ensurePostProcessDefaults()
+        }
+        if let prefs = ConfigFolder.loadPrefs() {
+            cached.hasCompletedOnboarding = prefs.hasCompletedOnboarding
+            cached.microphoneUID = prefs.microphoneUID
+            cached.punctuationModes = prefs.punctuationModes
+            cached.launchAtLogin = prefs.launchAtLogin
+            cached.preferredListeningState = prefs.preferredListeningState
+        }
     }
 
     public var settings: AppSettings {
@@ -296,6 +331,15 @@ public final class SettingsStore: @unchecked Sendable {
             }
             if previous.vocabulary != cached.vocabulary {
                 ConfigFolder.writeVocabulary(cached.vocabulary)
+            }
+            if DelaySettings(previous) != DelaySettings(cached) {
+                ConfigFolder.writeDelays(DelaySettings(cached))
+            }
+            if previous.postProcessConfigs != cached.postProcessConfigs || previous.activePostProcessID != cached.activePostProcessID {
+                ConfigFolder.writePostProcess(activeID: cached.activePostProcessID, configs: cached.postProcessConfigs)
+            }
+            if PrefsSettings(previous) != PrefsSettings(cached) {
+                ConfigFolder.writePrefs(PrefsSettings(cached))
             }
             if let data = try? JSONEncoder().encode(cached) {
                 try? data.write(to: url, options: .atomic)
