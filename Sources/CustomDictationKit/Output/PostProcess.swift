@@ -61,6 +61,8 @@ public enum DefaultPostProcess {
         var body = input.text
         if isMidSentence(input) {
             body = SentenceFit.midSentence(input.text)
+        } else {
+            body = SentenceFit.sentenceStart(input.text)
         }
         guard !body.isEmpty else { return body }
         if FieldFit.needsLeadSpace(body, snapshot: input.snapshot, pendingLeadSpace: input.pendingLeadSpace) {
@@ -75,7 +77,7 @@ public enum DefaultPostProcess {
         if let before = snap.before, before == "\n" || before == "\r" { return false }
         guard let ch = snap.lastNonSpaceBefore else { return input.midSentence }
         if ".?!…".contains(ch) { return false }
-        if "•·●-*".contains(ch) { return false }
+        if "•·●-*".contains(ch), snap.lastNonSpaceIsAtLineStart { return false }
         return true
     }
 
@@ -88,6 +90,7 @@ public enum DefaultPostProcess {
       }
       var body = text;
       if (isMidSentence(ctx)) body = midSentence(body);
+      else body = sentenceStart(body);
       if (!body) return body;
       if (needsLeadSpace(body, ctx)) return " " + body;
       return body;
@@ -102,8 +105,16 @@ public enum DefaultPostProcess {
       var ch = snap.lastNonSpaceBefore;
       if (!ch) return !!ctx.midSentence;
       if (".?!…".indexOf(ch) >= 0) return false;
-      if ("•·●-*".indexOf(ch) >= 0) return false;
+      if ("•·●-*".indexOf(ch) >= 0 && snap.lastNonSpaceIsAtLineStart) return false;
       return true;
+    }
+
+    function sentenceStart(text) {
+      var t = String(text).replace(/^\\s+|\\s+$/g, "");
+      if (!t) return t;
+      var first = t.charAt(0);
+      if (first === first.toLowerCase() && first !== first.toUpperCase()) return first.toUpperCase() + t.slice(1);
+      return t;
     }
 
     function midSentence(text) {
@@ -135,10 +146,15 @@ public enum DefaultPostProcess {
         var before = snap.before || "";
         if (!before) return false;
         if (/\\s/.test(before)) return false;
-        if ("([{\\"'“‘".indexOf(before) >= 0) return false;
-        if (".?!…".indexOf(before) >= 0) return true;
-        if (/[A-Za-z0-9]/.test(before) || before === "'" || before === "’") return true;
-        return false;
+        if ("([{\\"'“‘".indexOf(before) >= 0) {
+          if ("\\"'“”‘’".indexOf(before) >= 0) {
+            var prev = snap.secondBefore || "";
+            if (/[A-Za-z0-9]/.test(prev)) return true;
+          }
+          return false;
+        }
+        if (before === "/" || before === "-") return false;
+        return true;
       }
       return !!ctx.pendingLeadSpace;
     }
@@ -205,7 +221,9 @@ public enum PostProcessor {
         var caret: [String: Any] = [:]
         if let snap = input.snapshot {
             caret["before"] = snap.before.map(String.init) ?? NSNull()
+            caret["secondBefore"] = snap.secondBefore.map(String.init) ?? NSNull()
             caret["lastNonSpaceBefore"] = snap.lastNonSpaceBefore.map(String.init) ?? NSNull()
+            caret["lastNonSpaceIsAtLineStart"] = snap.lastNonSpaceIsAtLineStart
             caret["after"] = snap.after.map(String.init) ?? NSNull()
             caret["selectedLength"] = snap.selectedLength
             caret["atStart"] = snap.atStart

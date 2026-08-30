@@ -3,20 +3,26 @@ import Foundation
 
 public struct CaretSnapshot: Equatable, Sendable {
     public var before: Character?
+    public var secondBefore: Character?
     public var lastNonSpaceBefore: Character?
+    public var lastNonSpaceIsAtLineStart: Bool
     public var after: Character?
     public var selectedLength: Int
     public var atStart: Bool
 
     public init(
         before: Character?,
+        secondBefore: Character? = nil,
         lastNonSpaceBefore: Character? = nil,
+        lastNonSpaceIsAtLineStart: Bool = false,
         after: Character?,
         selectedLength: Int,
         atStart: Bool
     ) {
         self.before = before
+        self.secondBefore = secondBefore
         self.lastNonSpaceBefore = lastNonSpaceBefore
+        self.lastNonSpaceIsAtLineStart = lastNonSpaceIsAtLineStart
         self.after = after
         self.selectedLength = selectedLength
         self.atStart = atStart
@@ -57,21 +63,39 @@ public enum InsertionContext {
         let loc = min(max(0, utf16Location), utf16.count)
         let len = min(max(0, utf16Length), utf16.count - loc)
         let before: Character? = loc > 0 ? Character(UnicodeScalar(utf16[loc - 1]) ?? UnicodeScalar(32)!) : nil
+        let secondBefore: Character? = loc > 1 ? Character(UnicodeScalar(utf16[loc - 2]) ?? UnicodeScalar(32)!) : nil
         var lastNonSpace: Character?
+        var lastNonSpaceIndex: Int?
         var i = loc
         while i > 0 {
             i -= 1
             let ch = Character(UnicodeScalar(utf16[i]) ?? UnicodeScalar(32)!)
             if !ch.isWhitespace, ch != "\n", ch != "\r" {
                 lastNonSpace = ch
+                lastNonSpaceIndex = i
                 break
+            }
+        }
+        var lastNonSpaceIsAtLineStart = lastNonSpace != nil
+        if let idx = lastNonSpaceIndex {
+            var j = idx
+            while j > 0 {
+                j -= 1
+                let ch = Character(UnicodeScalar(utf16[j]) ?? UnicodeScalar(32)!)
+                if ch == "\n" || ch == "\r" { break }
+                if !ch.isWhitespace {
+                    lastNonSpaceIsAtLineStart = false
+                    break
+                }
             }
         }
         let afterIndex = loc + len
         let after: Character? = afterIndex < utf16.count ? Character(UnicodeScalar(utf16[afterIndex]) ?? UnicodeScalar(32)!) : nil
         return CaretSnapshot(
             before: before,
+            secondBefore: secondBefore,
             lastNonSpaceBefore: lastNonSpace,
+            lastNonSpaceIsAtLineStart: lastNonSpaceIsAtLineStart,
             after: after,
             selectedLength: len,
             atStart: loc == 0
@@ -103,13 +127,16 @@ public enum FieldFit {
         if let snapshot {
             if snapshot.selectedLength > 0 { return false }
             if snapshot.atStart { return false }
-            if let before = snapshot.before, before.isWhitespace { return false }
-            if let before = snapshot.before, opensRight(before) { return false }
-            if let before = snapshot.before, ".?!…".contains(before) { return true }
-            if let before = snapshot.before, before.isLetter || before.isNumber || before == "'" || before == "’" {
-                return true
+            guard let before = snapshot.before else { return false }
+            if before.isWhitespace { return false }
+            if opensRight(before) {
+                if isQuote(before), let prev = snapshot.secondBefore, prev.isLetter || prev.isNumber {
+                    return true
+                }
+                return false
             }
-            return false
+            if joinsRight(before) { return false }
+            return true
         }
         return pendingLeadSpace
     }
@@ -121,9 +148,21 @@ public enum FieldFit {
     private static func opensRight(_ ch: Character) -> Bool {
         "([{\"'“‘".contains(ch)
     }
+
+    private static func joinsRight(_ ch: Character) -> Bool {
+        ch == "/" || ch == "-"
+    }
+
+    private static func isQuote(_ ch: Character) -> Bool {
+        "\"'“”‘’".contains(ch)
+    }
 }
 
 public enum SentenceFit {
+    public static func sentenceStart(_ text: String) -> String {
+        capitalizeIfNeeded(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     public static func midSentence(_ text: String) -> String {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return text }
@@ -135,6 +174,11 @@ public enum SentenceFit {
             t = String(t.dropLast()).trimmingCharacters(in: .whitespaces)
         }
         return decapitalizeIfNeeded(t)
+    }
+
+    private static func capitalizeIfNeeded(_ text: String) -> String {
+        guard let first = text.first, first.isLetter, first.isLowercase else { return text }
+        return String(first).localizedUppercase + text.dropFirst()
     }
 
     private static func decapitalizeIfNeeded(_ text: String) -> String {
