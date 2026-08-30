@@ -11,11 +11,24 @@ enum DefaultCommands {
 
     private static func directories() -> [URL] {
         var urls: [URL] = []
-        if let url = Bundle.module.url(forResource: "commands", withExtension: nil, subdirectory: "Defaults") {
-            urls.append(url)
-        }
         if let url = Bundle.main.url(forResource: "default-commands", withExtension: nil) {
             urls.append(url)
+        }
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Defaults/commands", isDirectory: true)
+        if FileManager.default.fileExists(atPath: source.path) {
+            urls.append(source)
+        }
+        for bundle in Bundle.allBundles {
+            if let url = bundle.url(forResource: "default-commands", withExtension: nil) {
+                urls.append(url)
+            }
+            if let root = bundle.resourceURL?.appendingPathComponent("Defaults/commands", isDirectory: true),
+               FileManager.default.fileExists(atPath: root.path) {
+                urls.append(root)
+            }
         }
         return urls
     }
