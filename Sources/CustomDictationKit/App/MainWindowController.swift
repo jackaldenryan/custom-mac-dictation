@@ -167,18 +167,25 @@ private struct AppRootView: View {
             }
             HStack(spacing: 10) {
                 if session.state == .listening {
-                    Button("Stop Listening") {
-                        Task { await session.stopCompletely() }
+                    Button("Pause Listening") {
+                        session.requestStop()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                 } else {
                     Button("Start Listening") {
-                        Task { await session.startListening() }
+                        Task { await session.requestStart() }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
+                }
+                if session.state != .off {
+                    Button("Turn Mic Off") {
+                        Task { await session.stopCompletely() }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -234,6 +241,7 @@ private struct AppRootView: View {
                             Text("seconds")
                                 .foregroundStyle(.secondary)
                             Button("Apply") { applyCustomFinalizeDelay() }
+                                .buttonStyle(.bordered)
                         }
                     }
                     Text("How long to wait after you stop talking before the phrase is finished. Longer can keep Apple from adding a second period or question mark.")
@@ -256,13 +264,14 @@ private struct AppRootView: View {
                             Text("seconds")
                                 .foregroundStyle(.secondary)
                             Button("Apply") { applyCustomKeyRepeatDelay() }
+                                .buttonStyle(.bordered)
                         }
                     }
                     Text("Used when you say “press the page down key five times”. Default is 0.08 seconds.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Section("Lone comma or period after") {
+                Section("Spoken punctuation after a phrase") {
                     Picker("Pause", selection: lonePunctMenuBinding) {
                         ForEach([0, 5, 10, 15, 20, 30], id: \.self) { tenths in
                             Text(Self.finalizeMenuLabel(tenths: tenths)).tag(LonePunctMenu.tenths(tenths))
@@ -278,9 +287,10 @@ private struct AppRootView: View {
                             Text("seconds")
                                 .foregroundStyle(.secondary)
                             Button("Apply") { applyCustomLonePunctDelay() }
+                                .buttonStyle(.bordered)
                         }
                     }
-                    Text("A leftover period or question mark right after a phrase is ignored. After this pause, a lone “,” or “.” is typed. Default is 1 second.")
+                    Text("Spoken comma, period, or question mark right after a phrase is ignored during this pause. After it, saying comma or period types the character. Default is 1 second.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -437,6 +447,8 @@ private struct AppRootView: View {
                 commandDetailField
                 Button("Add") { addCommand() }
                     .disabled(!canAddCommand)
+                Button("Set phrase") { setPhraseOnSelected() }
+                    .disabled(!canSetPhrase)
                 Button("Enable") { setSelectedCommandsEnabled(true) }
                     .disabled(selectedCommands.isEmpty)
                 Button("Disable") { setSelectedCommandsEnabled(false) }
@@ -473,7 +485,7 @@ private struct AppRootView: View {
                 }
             }
             .onDeleteCommand { deleteSelectedCommands() }
-            Text("Shipped commands come with the app as JSON. Same format as ones you add. Check rows, then Enable, Disable, or Delete. Restore built-ins puts shipped files back.")
+            Text("Select a command (including shipped ones) and Set phrase to change what you say. The action stays the same. Comma-separate multiple phrases. Add still creates a new command. Restore built-ins puts shipped files back.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -593,7 +605,8 @@ private struct AppRootView: View {
 
     private var statusTitle: String {
         switch session.state {
-        case .off, .suspended: return "Listening is off"
+        case .off: return "Listening is off"
+        case .suspended: return "Paused"
         case .listening: return "Listening"
         }
     }
@@ -603,9 +616,9 @@ private struct AppRootView: View {
         case .off:
             return "The microphone is off. Start listening, click the box below or another app, then speak."
         case .suspended:
-            return "Start listening, click the box below or another app, then speak."
+            return "Dictation is paused. The mic stays on for the start-listening phrase only. Say that phrase or press Start Listening."
         case .listening:
-            return "Click the box below or another app, then speak. Say “stop listening dictation” to stop."
+            return "Click the box below or another app, then speak. Say your stop-listening phrase to pause. The mic stays on until you quit."
         }
     }
 
@@ -938,6 +951,22 @@ private struct AppRootView: View {
         persist()
         selectedVocab = []
         vocabMessage = "Removed \(ids.count) word(s)."
+    }
+
+    private var canSetPhrase: Bool {
+        !selectedCommands.isEmpty && !newPhrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func setPhraseOnSelected() {
+        let raw = newPhrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        let phrases = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !phrases.isEmpty else { return }
+        for index in settings.commands.indices where selectedCommands.contains(settings.commands[index].id) {
+            settings.commands[index].phrases = phrases
+        }
+        persist()
+        newPhrase = ""
+        commandMessage = "Updated phrase(s). Restart listening to apply."
     }
 
     private var canAddCommand: Bool {

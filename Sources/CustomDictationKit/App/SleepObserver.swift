@@ -4,6 +4,7 @@ import AppKit
 public final class SleepObserver {
     private var tokens: [NSObjectProtocol] = []
     public var onWillSleep: (() -> Void)?
+    public var onScreenUnlocked: (() -> Void)?
 
     public init() {}
 
@@ -15,5 +16,23 @@ public final class SleepObserver {
         tokens.append(center.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.onWillSleep?() }
         })
+        tokens.append(
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.apple.screenIsLocked"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.onWillSleep?() }
+            }
+        )
+        tokens.append(
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("com.apple.screenIsUnlocked"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.onScreenUnlocked?() }
+            }
+        )
     }
 }

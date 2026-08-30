@@ -46,9 +46,13 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         if session.state == .listening {
-            menu.addItem(actionItem("Stop Listening", #selector(stopListening)))
-        } else {
+            menu.addItem(actionItem("Pause Listening", #selector(stopListening)))
+        }
+        if session.state != .listening {
             menu.addItem(actionItem("Start Listening", #selector(startListening)))
+        }
+        if session.state != .off {
+            menu.addItem(actionItem("Turn Mic Off", #selector(turnMicOff)))
         }
 
         let micMenu = NSMenu()
@@ -97,7 +101,8 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var stateTitle: String {
         switch session.state {
-        case .off, .suspended: return "Listening is off"
+        case .off: return "Listening is off"
+        case .suspended: return "Paused"
         case .listening: return "Listening"
         }
     }
@@ -109,7 +114,12 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func refreshIcon() {
-        let name = session.state == .listening ? "mic.fill" : "mic.slash"
+        let name: String
+        switch session.state {
+        case .listening: name = "mic.fill"
+        case .suspended: name = "mic"
+        case .off: name = "mic.slash"
+        }
         item.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: stateTitle)
     }
 
@@ -122,10 +132,14 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func startListening() {
-        Task { await session.startListening() }
+        Task { await session.requestStart() }
     }
 
     @objc private func stopListening() {
+        session.requestStop()
+    }
+
+    @objc private func turnMicOff() {
         Task { await session.stopCompletely() }
     }
 

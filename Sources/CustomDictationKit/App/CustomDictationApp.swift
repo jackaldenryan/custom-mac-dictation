@@ -34,6 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sleepObserver.onWillSleep = { [weak self] in
             Task { await self?.session.stopCompletely(persist: false) }
         }
+        sleepObserver.onScreenUnlocked = { [weak self] in
+            guard let self else { return }
+            Task {
+                if self.store.settings.preferredListeningState != .off {
+                    await self.session.startListening()
+                }
+            }
+        }
         sleepObserver.start()
 
         if store.settings.hasCompletedOnboarding {

@@ -323,7 +323,7 @@ public enum ConfigFolder {
 
      Lower `priority` runs first among the same stage. User `exact` commands (priority 100) still beat press/open/quit.
 
-     Shipped defaults are `builtin.*.json`. Edit, disable, or delete them. Restore built-ins in the app puts the shipped files back.
+     Shipped defaults are `builtin.*.json`. Edit phrases, disable, or delete them. Restore built-ins in the app puts the shipped files back.
 
     ## vocabulary/
 

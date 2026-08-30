@@ -76,28 +76,38 @@ public enum Typist {
         }
         let repeats = min(75, max(1, times))
         let point = cgMouseLocation()
-        let source = CGEventSource(stateID: .hidSystemState)
-        source?.localEventsSuppressionInterval = 0
+        let keys = CGEventSource(stateID: .combinedSessionState)
+        keys?.localEventsSuppressionInterval = 0
         let button: CGMouseButton = right ? .right : .left
         let downType: CGEventType = right ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = right ? .rightMouseUp : .leftMouseUp
-        postModifiers(source: source, flags: flags, keyDown: true)
+        postModifiers(source: keys, flags: flags, keyDown: true)
         if !flags.isEmpty {
-            Thread.sleep(forTimeInterval: 0.03)
+            waitForModifierState(flags)
         }
-        let mouseFlags = flags.union(CGEventSource.flagsState(.hidSystemState))
         for index in 1...repeats {
-            let down = CGEvent(mouseEventSource: source, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
-            let up = CGEvent(mouseEventSource: source, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
-            down?.flags = mouseFlags
-            up?.flags = mouseFlags
+            let down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
+            let up = CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
+            down?.flags = flags
+            up?.flags = flags
             down?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
             up?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
             down?.post(tap: .cghidEventTap)
             up?.post(tap: .cghidEventTap)
+            if index < repeats {
+                Thread.sleep(forTimeInterval: 0.008)
+            }
         }
-        postModifiers(source: source, flags: flags, keyDown: false)
-        DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
+        postModifiers(source: keys, flags: flags, keyDown: false)
+        DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) session=\(CGEventSource.flagsState(.combinedSessionState).rawValue) times=\(repeats) into \(frontAppName())")
+    }
+
+    private static func waitForModifierState(_ flags: CGEventFlags) {
+        for _ in 0..<25 {
+            if CGEventSource.flagsState(.combinedSessionState).contains(flags) { return }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        DiagnosticLog.line("Click modifiers not visible in session state flags=\(flags.rawValue) session=\(CGEventSource.flagsState(.combinedSessionState).rawValue)")
     }
 
     private static func cgMouseLocation() -> CGPoint {
@@ -150,9 +160,11 @@ public enum Typist {
 
     private static func postModifiers(source: CGEventSource?, flags: CGEventFlags, keyDown: Bool) {
         let keys = keyDown ? modifierKeys : modifierKeys.reversed()
+        var held: CGEventFlags = []
         for (flag, code) in keys where flags.contains(flag) {
+            if keyDown { held.insert(flag) }
             let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: keyDown)
-            event?.flags = keyDown ? flag : []
+            event?.flags = keyDown ? held : held.subtracting(flag)
             event?.post(tap: .cghidEventTap)
         }
     }

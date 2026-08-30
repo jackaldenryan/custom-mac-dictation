@@ -199,5 +199,37 @@ expect(
     ) == .ignored,
     "ignore lone question"
 )
+expect(
+    Router.handle(
+        transcript: "hello there",
+        state: .suspended,
+        settings: .default,
+        onStartListening: {},
+        onStopListening: {}
+    ) == .ignored,
+    "suspended ignores dictation"
+)
+var started = false
+expect(
+    Router.handle(
+        transcript: "start listening dictation",
+        state: .suspended,
+        settings: .default,
+        onStartListening: { started = true },
+        onStopListening: {}
+    ) == .handled && started,
+    "start listening while suspended"
+)
+var stopped = false
+expect(
+    Router.handle(
+        transcript: "stop listening dictation",
+        state: .listening,
+        settings: .default,
+        onStartListening: {},
+        onStopListening: { stopped = true }
+    ) == .handled && stopped,
+    "stop listening while listening"
+)
 
 print("CheckLogic passed")

@@ -108,6 +108,21 @@ public final class ListeningSession: ObservableObject {
         engine.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(seconds)
     }
 
+    public func requestStart() async {
+        switch state {
+        case .listening:
+            return
+        case .suspended:
+            resumeFromSuspend()
+        case .off:
+            await startListening()
+        }
+    }
+
+    public func requestStop() {
+        if state == .listening { suspend() }
+    }
+
     public func restorePreferredState() async {
         switch store.settings.preferredListeningState {
         case .off:
@@ -116,6 +131,7 @@ public final class ListeningSession: ObservableObject {
             await startListening()
         case .suspended:
             await startListening()
+            suspend()
         }
     }
 
@@ -162,10 +178,10 @@ public final class ListeningSession: ObservableObject {
             state: state,
             settings: settings,
             onStartListening: { [weak self] in
-                Task { await self?.startListening() }
+                Task { await self?.requestStart() }
             },
             onStopListening: { [weak self] in
-                Task { await self?.stopCompletely() }
+                self?.requestStop()
             }
         )
         switch result {
@@ -187,12 +203,13 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func playHandledSound(for transcript: String) {
-        switch TranscriptNormalizer.normalize(transcript) {
-        case "start listening dictation", "start listening mac":
+        let normalized = TranscriptNormalizer.normalize(transcript)
+        let commands = store.settings.commands.filter(\.enabled)
+        if commands.contains(where: { $0.action == .startListening && $0.phrases.contains { TranscriptNormalizer.normalize($0) == normalized } }) {
             SoundFeedback.playStart()
-        case "stop listening dictation", "stop listening mac":
+        } else if commands.contains(where: { $0.action == .stopListening && $0.phrases.contains { TranscriptNormalizer.normalize($0) == normalized } }) {
             SoundFeedback.playStop()
-        default:
+        } else {
             SoundFeedback.playCommand()
         }
     }
