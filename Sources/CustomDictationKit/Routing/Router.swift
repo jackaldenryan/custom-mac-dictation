@@ -90,6 +90,8 @@ public enum Router {
             return command.appArgument(normalized: normalized) != nil
         case .keyPressGrammar:
             return KeyPressGrammar.parse(transcript) != nil
+        case .clickGrammar:
+            return ClickGrammar.parse(transcript) != nil
         }
     }
 
@@ -111,6 +113,8 @@ public enum Router {
             return command.holdsAppSlot(normalized: normalized)
         case .keyPressGrammar:
             return normalized == "press" || normalized.hasPrefix("press ")
+        case .clickGrammar:
+            return ClickGrammar.shouldHold(normalized)
         }
     }
 
@@ -143,11 +147,16 @@ public enum Router {
             )
             return .handled
         case .click:
-            Typist.click(
-                flags: Typist.cgFlags(from: command.modifierFlags ?? 0),
-                right: command.clickButton == "right",
-                times: command.clickTimes ?? 1
-            )
+            if command.match == .clickGrammar {
+                guard let click = ClickGrammar.parse(transcript) else { return .ignored }
+                Typist.click(flags: click.flags, right: click.right, times: click.times)
+            } else {
+                Typist.click(
+                    flags: Typist.cgFlags(from: command.modifierFlags ?? 0),
+                    right: command.clickButton == "right",
+                    times: command.clickTimes ?? 1
+                )
+            }
             return .handled
         case .openApp:
             let name = command.appArgument(normalized: normalized) ?? argument(normalized, prefix: command.prefix ?? "open ")

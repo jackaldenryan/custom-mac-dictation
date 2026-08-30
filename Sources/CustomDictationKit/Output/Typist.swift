@@ -75,104 +75,65 @@ public enum Typist {
             return
         }
         let repeats = min(75, max(1, times))
-        let point = cgMouseLocation()
-        let target = appAt(point)
-        if flags.contains(.maskCommand), !right, repeats == 1, isBrowser(target.bundleID) {
-            postMouse(type: .otherMouseDown, upType: .otherMouseUp, button: .center, point: point, flags: [], times: 1, pid: target.pid)
-            DiagnosticLog.line("Middle-clicked link flags=command into \(target.name)")
+        if !flags.isEmpty, systemEventsClick(flags: flags, right: right, times: repeats) {
+            DiagnosticLog.line("System Events clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
             return
         }
+        let point = cgMouseLocation()
         let keys = CGEventSource(stateID: .combinedSessionState)
         keys?.localEventsSuppressionInterval = 0
         let button: CGMouseButton = right ? .right : .left
         let downType: CGEventType = right ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = right ? .rightMouseUp : .leftMouseUp
         postModifiers(source: keys, flags: flags, keyDown: true)
-        if flags.contains(.maskCommand) {
-            let rightCmd = CGEvent(keyboardEventSource: keys, virtualKey: 54, keyDown: true)
-            rightCmd?.flags = .maskCommand
-            rightCmd?.post(tap: .cghidEventTap)
-            if let pid = target.pid {
-                rightCmd?.postToPid(pid)
-            }
-        }
         if !flags.isEmpty {
             waitForModifierState(flags)
-            Thread.sleep(forTimeInterval: 0.05)
         }
-        postMouse(type: downType, upType: upType, button: button, point: point, flags: flags, times: repeats, pid: target.pid)
-        if flags.contains(.maskCommand) {
-            let rightCmd = CGEvent(keyboardEventSource: keys, virtualKey: 54, keyDown: false)
-            rightCmd?.flags = []
-            rightCmd?.post(tap: .cghidEventTap)
-        }
-        postModifiers(source: keys, flags: flags, keyDown: false)
-        DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) session=\(CGEventSource.flagsState(.combinedSessionState).rawValue) times=\(repeats) into \(target.name)")
-    }
-
-    private static func postMouse(
-        type: CGEventType,
-        upType: CGEventType,
-        button: CGMouseButton,
-        point: CGPoint,
-        flags: CGEventFlags,
-        times: Int,
-        pid: pid_t?
-    ) {
-        for index in 1...times {
-            let down = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button)
+        for index in 1...repeats {
+            let down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
             let up = CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
             down?.flags = flags
             up?.flags = flags
             down?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
             up?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
-            if let pid {
-                down?.postToPid(pid)
-                Thread.sleep(forTimeInterval: 0.015)
-                up?.postToPid(pid)
-            } else {
-                down?.post(tap: .cghidEventTap)
-                Thread.sleep(forTimeInterval: 0.015)
-                up?.post(tap: .cghidEventTap)
-            }
-            if index < times {
+            down?.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.015)
+            up?.post(tap: .cghidEventTap)
+            if index < repeats {
                 Thread.sleep(forTimeInterval: 0.008)
             }
         }
+        postModifiers(source: keys, flags: flags, keyDown: false)
+        DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
     }
 
-    private static func appAt(_ point: CGPoint) -> (pid: pid_t?, bundleID: String?, name: String) {
-        let front = NSWorkspace.shared.frontmostApplication
-        guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
-            return (front?.processIdentifier, front?.bundleIdentifier, front?.localizedName ?? "unknown")
+    private static func systemEventsClick(flags: CGEventFlags, right: Bool, times: Int) -> Bool {
+        let loc = NSEvent.mouseLocation
+        var names: [String] = []
+        if flags.contains(.maskCommand) { names.append("command") }
+        if flags.contains(.maskShift) { names.append("shift") }
+        if flags.contains(.maskAlternate) { names.append("option") }
+        if flags.contains(.maskControl) { names.append("control") }
+        let down = names.map { "key down \($0)" }.joined(separator: "\n")
+        let up = names.reversed().map { "key up \($0)" }.joined(separator: "\n")
+        let verb = right ? "right click" : "click"
+        let clicks = Array(repeating: "\(verb) at {\(Int(loc.x.rounded())), \(Int(loc.y.rounded()))}", count: times).joined(separator: "\n")
+        let source = """
+        tell application "System Events"
+        \(down)
+        delay 0.05
+        \(clicks)
+        delay 0.05
+        \(up)
+        end tell
+        """
+        var error: NSDictionary?
+        _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        if let error {
+            DiagnosticLog.line("System Events click failed: \(error)")
+            return false
         }
-        for window in info {
-            let layer = window[kCGWindowLayer as String] as? Int ?? 0
-            guard layer == 0 else { continue }
-            guard let dict = window[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: dict),
-                  bounds.contains(point) else { continue }
-            let pid = window[kCGWindowOwnerPID as String] as? pid_t
-            let app = pid.flatMap { NSRunningApplication(processIdentifier: $0) }
-            return (pid, app?.bundleIdentifier ?? front?.bundleIdentifier, app?.localizedName ?? front?.localizedName ?? "unknown")
-        }
-        return (front?.processIdentifier, front?.bundleIdentifier, front?.localizedName ?? "unknown")
-    }
-
-    private static func isBrowser(_ bundleID: String?) -> Bool {
-        guard let id = bundleID?.lowercased() else { return false }
-        let needles = [
-            "com.google.chrome",
-            "com.apple.safari",
-            "company.thebrowser.browser",
-            "com.brave.browser",
-            "org.mozilla.firefox",
-            "com.microsoft.edgemac",
-            "com.operasoftware.opera",
-            "com.vivaldi.vivaldi",
-            "com.kagi.kagimacos",
-        ]
-        return needles.contains { id.hasPrefix($0) }
+        return true
     }
 
     private static func waitForModifierState(_ flags: CGEventFlags) {

@@ -5,6 +5,7 @@ public enum CommandMatch: String, Codable, Sendable {
     case prefix
     case keyPressGrammar
     case appSlot
+    case clickGrammar
 }
 
 public enum CommandWhen: String, Codable, Sendable {

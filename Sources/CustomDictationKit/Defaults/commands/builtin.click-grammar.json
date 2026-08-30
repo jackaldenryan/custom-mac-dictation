@@ -1,0 +1,12 @@
+{
+  "action": "click",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.click-grammar",
+  "match": "clickGrammar",
+  "phrases": [
+    "click"
+  ],
+  "priority": 178,
+  "when": "listening"
+}

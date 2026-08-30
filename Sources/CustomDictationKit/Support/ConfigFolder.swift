@@ -313,7 +313,7 @@ public enum ConfigFolder {
     }
     ```
 
-     `match`: `exact` | `prefix` | `keyPressGrammar` | `appSlot`  
+     `match`: `exact` | `prefix` | `keyPressGrammar` | `appSlot` | `clickGrammar`  
      `when`: `always` (start/stop) | `listening`  
      `action`: `startListening` `stopListening` `keyPressGrammar` `openApp` `quitApp` `quitFrontmost` `capitalize` `uppercase` `lowercase` `pasteText` `shortcut` `openFile` `click`
 

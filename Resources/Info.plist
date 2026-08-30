@@ -32,6 +32,8 @@
 	<string>Custom Dictation listens with your chosen microphone so it can type what you say and run voice commands. Audio stays on this Mac.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Custom Dictation uses on-device speech recognition to turn your speech into text and commands. Audio stays on this Mac.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Custom Dictation uses System Events to hold modifier keys while clicking.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
