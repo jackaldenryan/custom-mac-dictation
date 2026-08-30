@@ -91,6 +91,7 @@ private struct AppRootView: View {
     @State private var postProcessScript = PostProcessConfig.builtInDefault.script
     @State private var postProcessMessage = ""
     @State private var section: AppSection = .listen
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var vocabSearch = ""
     @State private var commandSearch = ""
     @State private var selectedVocab = Set<String>()
@@ -98,12 +99,10 @@ private struct AppRootView: View {
     @State private var showFormat = false
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $section) {
-                ForEach(AppSection.allCases) { item in
-                    Label(item.title, systemImage: item.icon)
-                        .tag(item)
-                }
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            List(AppSection.allCases, id: \.self, selection: $section) { item in
+                Label(item.title, systemImage: item.icon)
+                    .tag(item)
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
@@ -123,6 +122,11 @@ private struct AppRootView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .navigationSplitViewStyle(.balanced)
+        .onChange(of: columnVisibility) { _, visibility in
+            if visibility != .all {
+                columnVisibility = .all
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             settings = store.settings
@@ -560,15 +564,13 @@ private struct AppRootView: View {
         }
     }
 
-    private enum AppSection: String, CaseIterable, Identifiable, Hashable {
+    private enum AppSection: String, CaseIterable, Hashable {
         case listen
         case vocabulary
         case commands
         case postProcess
         case updates
         case diagnostics
-
-        var id: String { rawValue }
 
         var title: String {
             switch self {
