@@ -59,7 +59,7 @@ public enum DefaultPostProcess {
             return input.text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         var body = input.text
-        if input.midSentence {
+        if isMidSentence(input) {
             body = SentenceFit.midSentence(input.text)
         }
         guard !body.isEmpty else { return body }
@@ -67,6 +67,16 @@ public enum DefaultPostProcess {
             return " " + body
         }
         return body
+    }
+
+    static func isMidSentence(_ input: PostProcessInput) -> Bool {
+        guard let snap = input.snapshot else { return input.midSentence }
+        if snap.atStart { return false }
+        if let before = snap.before, before == "\n" || before == "\r" { return false }
+        guard let ch = snap.lastNonSpaceBefore else { return input.midSentence }
+        if ".?!…".contains(ch) { return false }
+        if "•·●-*".contains(ch) { return false }
+        return true
     }
 
     public static let javascriptSource = """
@@ -77,10 +87,23 @@ public enum DefaultPostProcess {
         return String(text).trim();
       }
       var body = text;
-      if (ctx.midSentence) body = midSentence(body);
+      if (isMidSentence(ctx)) body = midSentence(body);
       if (!body) return body;
       if (needsLeadSpace(body, ctx)) return " " + body;
       return body;
+    }
+
+    function isMidSentence(ctx) {
+      var snap = ctx.caret;
+      if (!snap) return !!ctx.midSentence;
+      if (snap.atStart) return false;
+      var before = snap.before || "";
+      if (before === "\\n" || before === "\\r") return false;
+      var ch = snap.lastNonSpaceBefore;
+      if (!ch) return !!ctx.midSentence;
+      if (".?!…".indexOf(ch) >= 0) return false;
+      if ("•·●-*".indexOf(ch) >= 0) return false;
+      return true;
     }
 
     function midSentence(text) {
@@ -88,6 +111,7 @@ public enum DefaultPostProcess {
       if (!t) return text;
       if (t.length > 3 && t.slice(-3) === "...") t = t.slice(0, -3).replace(/\\s+$/g, "");
       else if (t.slice(-1) === "." && t.slice(-2) !== "..") t = t.slice(0, -1).replace(/\\s+$/g, "");
+      else if (t.slice(-1) === "?" && t.length >= 2 && /[A-Za-z0-9]/.test(t.charAt(t.length - 2))) t = t.slice(0, -1).replace(/\\s+$/g, "");
       return decapitalizeIfNeeded(t);
     }
 
@@ -97,12 +121,13 @@ public enum DefaultPostProcess {
       if (first !== first.toUpperCase()) return text;
       var rest = text.slice(1);
       if (first === "I" && (rest === "" || rest.charAt(0) === "'" || rest.charAt(0) === "’" || rest.charAt(0) === " ")) return text;
+      if (rest && rest.charAt(0) === rest.charAt(0).toUpperCase() && rest.charAt(0) !== rest.charAt(0).toLowerCase()) return text;
       return first.toLowerCase() + rest;
     }
 
     function needsLeadSpace(body, ctx) {
       if (!body || /\\s/.test(body.charAt(0))) return false;
-      if (",.!?:;)]}'\\"”’".indexOf(body.charAt(0)) >= 0) return false;
+      if (",.!?:;)]}'\\"”’/".indexOf(body.charAt(0)) >= 0) return false;
       var snap = ctx.caret;
       if (snap) {
         if (snap.selectedLength > 0) return false;
@@ -111,6 +136,7 @@ public enum DefaultPostProcess {
         if (!before) return false;
         if (/\\s/.test(before)) return false;
         if ("([{\\"'“‘".indexOf(before) >= 0) return false;
+        if (".?!…".indexOf(before) >= 0) return true;
         if (/[A-Za-z0-9]/.test(before) || before === "'" || before === "’") return true;
         return false;
       }

@@ -105,6 +105,7 @@ public enum FieldFit {
             if snapshot.atStart { return false }
             if let before = snapshot.before, before.isWhitespace { return false }
             if let before = snapshot.before, opensRight(before) { return false }
+            if let before = snapshot.before, ".?!…".contains(before) { return true }
             if let before = snapshot.before, before.isLetter || before.isNumber || before == "'" || before == "’" {
                 return true
             }
@@ -114,7 +115,7 @@ public enum FieldFit {
     }
 
     private static func attachesLeft(_ ch: Character) -> Bool {
-        ",.!?:;)]}'\"”’".contains(ch)
+        ",.!?:;)]}'\"”’/".contains(ch)
     }
 
     private static func opensRight(_ ch: Character) -> Bool {
@@ -130,6 +131,8 @@ public enum SentenceFit {
             t = String(t.dropLast(3)).trimmingCharacters(in: .whitespaces)
         } else if t.hasSuffix("."), !t.hasSuffix("..") {
             t = String(t.dropLast()).trimmingCharacters(in: .whitespaces)
+        } else if t.hasSuffix("?"), t.count >= 2, t.dropLast().last?.isLetter == true || t.dropLast().last?.isNumber == true {
+            t = String(t.dropLast()).trimmingCharacters(in: .whitespaces)
         }
         return decapitalizeIfNeeded(t)
     }
@@ -138,6 +141,9 @@ public enum SentenceFit {
         guard let first = text.first, first.isUppercase else { return text }
         let rest = text.dropFirst()
         if first == "I", rest.isEmpty || rest.first == "'" || rest.first == "’" || rest.first == " " {
+            return text
+        }
+        if let second = rest.first, second.isUppercase {
             return text
         }
         return String(first).localizedLowercase + rest

@@ -26,6 +26,11 @@ let package = Package(
             name: "CheckLogic",
             dependencies: ["CustomDictationKit"],
             path: "Sources/CheckLogic"
+        ),
+        .executableTarget(
+            name: "CheckPhraseRules",
+            dependencies: ["CustomDictationKit"],
+            path: "Sources/CheckPhraseRules"
         )
     ]
 )
