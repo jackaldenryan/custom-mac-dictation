@@ -130,10 +130,19 @@ do {
     let js = try PhraseSimulation.typedJavaScript(into: "working ", transcript: "In the lab", isPartial: true)
     check("js partial matches swift", js, typed("working ", "In the lab", partial: true))
 } catch {
-    check("js partial", error.localizedDescription, nil)
-}
+     check("js partial", error.localizedDescription, nil)
+ }
 
-if Checks.failures > 0 {
+ do {
+     var settings = AppSettings.default
+     settings.postProcessOnlyOnFinal = true
+     let live = PhraseSimulation.input(into: "working", transcript: "In the lab", isPartial: true)
+     check("live skip post-process when only-on-final", PostProcessor.process(live, settings: settings), "In the lab")
+     let fin = PhraseSimulation.input(into: "working", transcript: "In the lab", isPartial: false)
+     check("final still post-process when only-on-final", PostProcessor.process(fin, settings: settings), " in the lab")
+ }
+
+ if Checks.failures > 0 {
     fputs("CheckPhraseRules: \(Checks.failures) failed\n", stderr)
     exit(1)
 }

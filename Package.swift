@@ -17,7 +17,8 @@ let package = Package(
             path: "Sources/CustomDictationKit",
             resources: [.copy("Defaults")],
             linkerSettings: [
-                .linkedFramework("InputMethodKit")
+                .linkedFramework("InputMethodKit"),
+                .linkedFramework("Carbon")
             ]
         ),
         .executableTarget(

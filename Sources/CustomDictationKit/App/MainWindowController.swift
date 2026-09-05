@@ -8,14 +8,26 @@ import UniformTypeIdentifiers
 public final class MainWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
-    public func show(session: ListeningSession, store: SettingsStore, updater: UpdateController, onRunSetup: @escaping () -> Void = {}) {
+    public func show(
+        session: ListeningSession,
+        store: SettingsStore,
+        updater: UpdateController,
+        onRunSetup: @escaping () -> Void = {},
+        onSetupInputSource: @escaping () -> Void = {}
+    ) {
         NSApp.setActivationPolicy(.regular)
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
             return
         }
-        let root = AppRootView(session: session, store: store, updater: updater, onRunSetup: onRunSetup)
+        let root = AppRootView(
+            session: session,
+            store: store,
+            updater: updater,
+            onRunSetup: onRunSetup,
+            onSetupInputSource: onSetupInputSource
+        )
         let hosting = NSHostingController(rootView: root)
         hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
@@ -60,6 +72,7 @@ private struct AppRootView: View {
     let store: SettingsStore
     @ObservedObject var updater: UpdateController
     var onRunSetup: () -> Void = {}
+    var onSetupInputSource: () -> Void = {}
     @State private var settings: AppSettings = .default
     @State private var mics: [MicrophoneDevice] = []
     @State private var logText = ""
@@ -103,12 +116,8 @@ private struct AppRootView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(section == item ? Color.accentColor.opacity(0.18) : Color.clear)
-                            )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SidebarButtonStyle(selected: section == item))
                 }
                 Spacer(minLength: 0)
             }
@@ -119,6 +128,7 @@ private struct AppRootView: View {
             Group {
                 switch section {
                 case .listen: listenTab
+                case .playground: PlaygroundView(session: session, target: .shared)
                 case .vocabulary: vocabularyTab
                 case .commands: commandsTab
                 case .postProcess: postProcessTab
@@ -129,6 +139,7 @@ private struct AppRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(24)
             .background(Color(nsColor: .windowBackgroundColor))
+            .buttonStyle(PressableButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
@@ -145,6 +156,11 @@ private struct AppRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: ConfigFolder.didChange)) { _ in
             store.reloadFromFolder()
             settings = store.settings
+        }
+        .onChange(of: section) { _, new in
+            if new != .playground {
+                PlaygroundTarget.shared.deactivate()
+            }
         }
     }
 
@@ -234,18 +250,20 @@ private struct AppRootView: View {
                 if AppRuntime.isLocalTest {
                     Section("Typing") {
                         Toggle("Use Input Method (IMK)", isOn: inputMethodBinding)
-                        Text("On: insertText into the focused text client (Voice Control-like). Enable Custom Dictation Local as an input source. Off: Accessibility, then keyboard events.")
+                        Text("On: insertText like Voice Control. macOS 26 does not list our Input Method in Keyboard settings, so this usually cannot activate. Off: Accessibility, then keyboard events.")
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Section("Finish a phrase after") {
+                    Toggle("Disable silence finalize", isOn: disableFinalizeBinding)
                     Picker("Silence", selection: finalizeMenuBinding) {
                         ForEach(0...20, id: \.self) { tenths in
                             Text(Self.finalizeMenuLabel(tenths: tenths)).tag(FinalizeMenu.tenths(tenths))
                         }
                         Text("Custom").tag(FinalizeMenu.custom)
                     }
+                    .disabled(settings.disableFinalizeDelay)
                     if finalizeMenu == .custom {
                         HStack {
                             TextField("Seconds", text: $customFinalizeText)
@@ -258,7 +276,7 @@ private struct AppRootView: View {
                                 .buttonStyle(.bordered)
                         }
                     }
-                    Text("How long to wait after you stop talking before the phrase is finished. Longer can keep Apple from adding a second period or question mark.")
+                    Text("On: wait for Apple’s final only. Off: after this silence we nudge Apple to finish the phrase (default 0.4s).")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -286,12 +304,14 @@ private struct AppRootView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Section("Spoken punctuation after a phrase") {
+                    Toggle("Disable punctuation delay", isOn: disableLonePunctBinding)
                     Picker("Pause", selection: lonePunctMenuBinding) {
                         ForEach([0, 5, 10, 15, 20, 30], id: \.self) { tenths in
                             Text(Self.finalizeMenuLabel(tenths: tenths)).tag(LonePunctMenu.tenths(tenths))
                         }
                         Text("Custom").tag(LonePunctMenu.custom)
                     }
+                    .disabled(settings.disableLonePunctuationDelay)
                     if lonePunctMenu == .custom {
                         HStack {
                             TextField("Seconds", text: $customLonePunctText)
@@ -301,10 +321,9 @@ private struct AppRootView: View {
                             Text("seconds")
                                 .foregroundStyle(.secondary)
                             Button("Apply") { applyCustomLonePunctDelay() }
-                                .buttonStyle(.bordered)
                         }
                     }
-                    Text("Spoken comma, period, or question mark right after a phrase is ignored during this pause. After it, saying comma or period types the character. Default is 1 second.")
+                    Text("On: comma, period, and question mark type immediately. Off: spoken punctuation right after a phrase is ignored during the pause (default 1 second).")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -320,10 +339,14 @@ private struct AppRootView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Post-process")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
-            Text("Runs only after a phrase is routed as typed text, not on commands. Default is the built-in rules. Duplicate it to experiment. function process(ctx) must return the string to type, or null to ignore.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
+             Text("Default runs on live guesses and on Apple’s final. Commands are never post-processed. Duplicate Default to edit. function process(ctx) must return the string to type, or null to ignore.")
+                 .foregroundStyle(.secondary)
+                 .fixedSize(horizontal: false, vertical: true)
+             Toggle("Post-process only after Apple’s final", isOn: postProcessOnlyOnFinalBinding)
+             Text("On: live text is Apple’s raw guess. Off: spacing and capitals apply while you speak.")
+                 .foregroundStyle(.secondary)
+                 .fixedSize(horizontal: false, vertical: true)
+             HStack {
                 Picker("Configuration", selection: postProcessIDBinding) {
                     ForEach(settings.postProcessConfigs) { config in
                         Text(config.name).tag(config.id)
@@ -606,12 +629,12 @@ private struct AppRootView: View {
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
             HStack {
-                Button("Refresh log") { logText = DiagnosticLog.tail() }
-                Button("Copy log") {
+                FlashButton(title: "Refresh log", doneTitle: "Refreshed") { logText = DiagnosticLog.tail() }
+                FlashButton(title: "Copy log", doneTitle: "Copied") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(DiagnosticLog.tail(), forType: .string)
                 }
-                Button("Show log file") { DiagnosticLog.revealInFinder() }
+                FlashButton(title: "Show log file", doneTitle: "Opened") { DiagnosticLog.revealInFinder() }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -638,6 +661,7 @@ private struct AppRootView: View {
 
     private enum AppSection: String, CaseIterable, Hashable {
         case listen
+        case playground
         case vocabulary
         case commands
         case postProcess
@@ -647,6 +671,7 @@ private struct AppRootView: View {
         var title: String {
             switch self {
             case .listen: return "Listen"
+            case .playground: return "Playground"
             case .vocabulary: return "Vocabulary"
             case .commands: return "Commands"
             case .postProcess: return "Post-process"
@@ -658,6 +683,7 @@ private struct AppRootView: View {
         var icon: String {
             switch self {
             case .listen: return "mic.fill"
+            case .playground: return "square.and.pencil"
             case .vocabulary: return "text.book.closed"
             case .commands: return "command"
             case .postProcess: return "function"
@@ -770,6 +796,36 @@ private struct AppRootView: View {
         )
     }
 
+    private var disableFinalizeBinding: Binding<Bool> {
+        Binding(
+            get: { settings.disableFinalizeDelay },
+            set: { on in
+                settings.disableFinalizeDelay = on
+                persist()
+            }
+        )
+    }
+
+     private var postProcessOnlyOnFinalBinding: Binding<Bool> {
+         Binding(
+             get: { settings.postProcessOnlyOnFinal },
+             set: { on in
+                 settings.postProcessOnlyOnFinal = on
+                 persist()
+             }
+         )
+     }
+
+     private var disableLonePunctBinding: Binding<Bool> {
+        Binding(
+            get: { settings.disableLonePunctuationDelay },
+            set: { on in
+                settings.disableLonePunctuationDelay = on
+                persist()
+            }
+        )
+    }
+
     private var inputMethodBinding: Binding<Bool> {
         Binding(
             get: { settings.useInputMethod },
@@ -778,6 +834,9 @@ private struct AppRootView: View {
                 persist()
                 if on {
                     DictationInputServer.start()
+                    if !InputSourceSetup.ensure() {
+                        onSetupInputSource()
+                    }
                 }
             }
         )

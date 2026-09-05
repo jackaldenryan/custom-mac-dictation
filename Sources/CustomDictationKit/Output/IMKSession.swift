@@ -5,6 +5,7 @@ public enum DictationInputServer {
     nonisolated(unsafe) private static var server: IMKServer?
 
     public static func start() {
+        _ = InputSourceSetup.installBundle()
         guard server == nil else { return }
         let name = (Bundle.main.object(forInfoDictionaryKey: "InputMethodConnectionName") as? String)
             ?? "CustomDictation_Connection"

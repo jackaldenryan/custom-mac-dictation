@@ -513,6 +513,11 @@ let cases: [Case] = [
         d.dictation(partials: [], final: "new.com")
         return (d.snapshot(), Want(text: "New.com"))
     },
+    Case(name: "notes apple final drops live period") { engine in
+        let d = Doc(text: "", box: .notes, engine: engine)
+        d.dictation(partials: ["This is a test."], final: "This is a test")
+        return (d.snapshot(), Want(text: "This is a test"))
+    },
     Case(name: "notes keep live then commit") { engine in
         let d = Doc(text: "Hi ", loc: 3, box: .notes, engine: engine)
         d.dictation(partials: ["Jack"], final: "Jack")

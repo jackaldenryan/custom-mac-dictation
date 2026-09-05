@@ -10,7 +10,7 @@ Build a second app that does not replace `/Applications/Custom Dictation.app` an
 
 That installs **Custom Dictation Local** to `/Applications` (not the released app). Config is `~/.custom-dictation-config-local`. Login items and update checks are off.
 
-Local app only: Listen → **Use Input Method (IMK)**. Off (default) is Accessibility then keyboard events. On uses `insertText` / `setMarkedText`; enable **Custom Dictation Local** as an input source. Clicks and “press the C key” still use Accessibility.
+Local app only: Listen → **Use Input Method (IMK)**. Off (default) is Accessibility then keyboard events. On macOS 26, Keyboard → Input Sources does not list classic IMK apps (only Apple `textinputmethod-services` extensions), so IMK usually cannot be selected. Clicks and “press the C key” still use Accessibility.
 
 Enable **Custom Dictation Local** in System Settings → Privacy & Security → Accessibility (and Microphone). It is a different app from Custom Dictation. If it is not in the list, click + and choose it from Applications.
 
@@ -40,7 +40,7 @@ Or all three in parallel:
 ./scripts/check.sh
 ```
 
-CheckPhraseRules is the desired typing rules (spaces, capitals, leftover punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, leftover period).
+CheckPhraseRules is the desired typing rules (spaces, capitals, leftover punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, leftover period). The app Playground sidebar speaks into simulated boxes and logs raw speech, writes, timers, and path (AX/HID/IMK).
 
 ## Tests for every bug
 

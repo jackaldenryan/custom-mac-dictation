@@ -21,13 +21,13 @@ public final class SpeechEngine: @unchecked Sendable {
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var lastInputEnd = CMTime.zero
     private var lastSpeechEnd = CMTime.zero
-    private var lastVolatileAt = Date.distantPast
-    private var pendingFinalize = false
+    private var finalizeGate = FinalizeGate()
     private var bufferCount = 0
     private var outputFormat: AVAudioFormat?
     private var lastMicrophoneUID: String?
     private var lastVocabSignature = ""
     public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
+    public var disableForcedFinalize = false
     public var isRunning: Bool { capture != nil }
 
     public init() {}
@@ -133,6 +133,7 @@ public final class SpeechEngine: @unchecked Sendable {
                     }
                     if TranscriptNormalizer.isLonePunctuation(text) {
                         if result.isFinal {
+                            self?.finalizeGate.noteFinal()
                             self?.onFinalTranscript?(text)
                         }
                         continue
@@ -141,10 +142,16 @@ public final class SpeechEngine: @unchecked Sendable {
                         "Transcript final=\(result.isFinal) t=\(result.resultsFinalizationTime.seconds) text=\(text)"
                     )
                     if result.isFinal {
+                        self?.finalizeGate.noteFinal()
+                        if PlaygroundTarget.shared.isActive {
+                            PlaygroundTarget.shared.event("speech final=\(String(reflecting: text))")
+                        }
                         self?.onFinalTranscript?(text)
                     } else {
-                        self?.lastVolatileAt = Date()
-                        self?.pendingFinalize = true
+                        self?.finalizeGate.notePartial()
+                        if PlaygroundTarget.shared.isActive {
+                            PlaygroundTarget.shared.event("speech partial=\(String(reflecting: text))")
+                        }
                         self?.onPartialTranscript?(text)
                     }
                 }
@@ -176,10 +183,8 @@ public final class SpeechEngine: @unchecked Sendable {
         finalizeTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                guard let self, self.pendingFinalize else { continue }
-                if Date().timeIntervalSince(self.lastVolatileAt) >= self.finalizeDelaySeconds {
-                    await self.finalizeThroughLatest()
-                }
+                guard let self, !self.disableForcedFinalize, self.finalizeGate.shouldForceFinalize(delay: self.finalizeDelaySeconds) else { continue }
+                await self.finalizeThroughLatest()
             }
         }
 
@@ -237,7 +242,7 @@ public final class SpeechEngine: @unchecked Sendable {
     private func pauseCapture() {
         capture?.stop()
         capture = nil
-        pendingFinalize = false
+        finalizeGate.noteFinal()
     }
 
     private func teardown() async {
@@ -270,7 +275,7 @@ public final class SpeechEngine: @unchecked Sendable {
     }
 
     private func finalizeThroughLatest() async {
-        pendingFinalize = false
+        finalizeGate.noteFinal()
         guard let analyzer else { return }
         var through = lastInputEnd
         if lastSpeechEnd.isValid, lastSpeechEnd.isNumeric {
@@ -278,6 +283,9 @@ public final class SpeechEngine: @unchecked Sendable {
         }
         guard through.isValid, through.isNumeric, through.seconds > 0 else { return }
         do {
+            if PlaygroundTarget.shared.isActive {
+                PlaygroundTarget.shared.event("finalize through=\(through.seconds) delay=\(finalizeDelaySeconds) finalizeOff=\(disableForcedFinalize ? 1 : 0)")
+            }
             DiagnosticLog.line("Finalize through \(through.seconds)")
             try await analyzer.finalize(through: through)
             onFinalizeIdle?()

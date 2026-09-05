@@ -63,6 +63,7 @@ public final class ListeningSession: ObservableObject {
         do {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
+            engine.disableForcedFinalize = settings.disableFinalizeDelay
             lastMicrophoneUID = settings.microphoneUID
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
@@ -106,6 +107,7 @@ public final class ListeningSession: ObservableObject {
 
     public func setFinalizeDelay(_ seconds: Double) {
         engine.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(seconds)
+        engine.disableForcedFinalize = store.settings.disableFinalizeDelay
     }
 
     public func requestStart() async {
@@ -142,7 +144,13 @@ public final class ListeningSession: ObservableObject {
         }
         lastPartial = text
         guard state == .listening else { return }
+        if PlaygroundTarget.shared.isActive {
+            PlaygroundTarget.shared.event("session partial=\(String(reflecting: text))")
+        }
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
+            if PlaygroundTarget.shared.isActive {
+                PlaygroundTarget.shared.event("session hold live")
+            }
             return
         }
         LivePhrase.show(text)
@@ -169,6 +177,9 @@ public final class ListeningSession: ObservableObject {
         }
         lastFinal = transcript
         lastPartial = ""
+        if PlaygroundTarget.shared.isActive {
+            PlaygroundTarget.shared.event("session final=\(String(reflecting: transcript))")
+        }
         let settings = store.settings
         let result = Router.handle(
             transcript: transcript,
@@ -197,6 +208,9 @@ public final class ListeningSession: ObservableObject {
             onErrorMessage?(message)
         }
         DiagnosticLog.line("Route \(lastRoute) state=\(state.rawValue) text=\(transcript)")
+        if PlaygroundTarget.shared.isActive {
+            PlaygroundTarget.shared.event("route=\(lastRoute) text=\(String(reflecting: transcript))")
+        }
     }
 
     private func playHandledSound(for transcript: String) {

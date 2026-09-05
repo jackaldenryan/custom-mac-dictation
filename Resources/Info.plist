@@ -40,16 +40,30 @@
 	<string>CustomDictation_Connection</string>
 	<key>InputMethodServerControllerClass</key>
 	<string>DictationInputController</string>
+	<key>InputMethodServerDelegateClass</key>
+	<string>DictationInputController</string>
+	<key>TISInputSourceID</key>
+	<string>com.jackaldenryan.custom-mac-dictation</string>
+	<key>TISIntendedLanguage</key>
+	<string>en</string>
 	<key>tsInputMethodCharacterRepertoireKey</key>
 	<array>
 		<string>Latn</string>
 	</array>
+	<key>tsInputMethodIconFileKey</key>
+	<string>AppIcon.icns</string>
 	<key>ComponentInputModeDict</key>
 	<dict>
+		<key>tsVisibleInputModeOrderedArrayKey</key>
+		<array>
+			<string>com.jackaldenryan.custom-mac-dictation</string>
+		</array>
 		<key>tsInputModeListKey</key>
 		<dict>
 			<key>com.jackaldenryan.custom-mac-dictation</key>
 			<dict>
+				<key>TISInputSourceID</key>
+				<string>com.jackaldenryan.custom-mac-dictation</string>
 				<key>TISIntendedLanguage</key>
 				<string>en</string>
 				<key>tsInputModeDefaultStateKey</key>
@@ -57,9 +71,15 @@
 				<key>tsInputModeIsVisibleKey</key>
 				<true/>
 				<key>tsInputModeScriptKey</key>
-				<string>smRoman</string>
+				<string>smUnicodeScript</string>
 				<key>tsInputModePrimaryInListKey</key>
 				<true/>
+				<key>tsInputModePrimaryInScriptKey</key>
+				<false/>
+				<key>tsInputModeISOLanguageCodeKey</key>
+				<string>en</string>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>AppIcon.icns</string>
 			</dict>
 		</dict>
 	</dict>

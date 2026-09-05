@@ -6,20 +6,27 @@ import SwiftUI
 public final class OnboardingController {
     private var window: NSWindow?
 
-    public func show(session: ListeningSession, store: SettingsStore, onFinished: @escaping () -> Void) {
-        if let window {
+    public func show(
+        session: ListeningSession,
+        store: SettingsStore,
+        onlyInputSource: Bool = false,
+        onFinished: @escaping () -> Void
+    ) {
+        if let window, !onlyInputSource {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let root = OnboardingView(session: session, store: store) { [weak self] in
+        window?.close()
+        window = nil
+        let root = OnboardingView(session: session, store: store, onlyInputSource: onlyInputSource) { [weak self] in
             self?.window?.close()
             self?.window = nil
             onFinished()
         }
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Set up Custom Dictation"
+        window.title = onlyInputSource ? "Input source" : "Set up Custom Dictation"
         window.styleMask = [.titled, .closable]
         window.setContentSize(NSSize(width: 560, height: 460))
         window.center()
@@ -35,6 +42,7 @@ private struct OnboardingView: View {
         case microphone
         case speech
         case accessibility
+        case inputSource
         case assets
         case micPicker
         case done
@@ -42,6 +50,7 @@ private struct OnboardingView: View {
 
     let session: ListeningSession
     let store: SettingsStore
+    var onlyInputSource = false
     let onFinished: () -> Void
 
     @State private var step: Step = .welcome
@@ -74,15 +83,30 @@ private struct OnboardingView: View {
             Spacer()
             HStack {
                 Spacer()
+                if step == .inputSource {
+                    Button("Skip") {
+                        finishInputSource()
+                    }
+                }
                 Button(buttonTitle, action: advance)
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(24)
         .frame(width: 560, height: 460)
+        .buttonStyle(PressableButtonStyle())
         .onAppear {
             mics = AudioCapture.listMicrophones()
             selectedUID = store.settings.microphoneUID
+            if onlyInputSource {
+                step = .inputSource
+            }
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            guard step == .inputSource else { return }
+            if InputSourceSetup.ensure() {
+                status = "Input source is selected."
+            }
         }
     }
 
@@ -92,6 +116,7 @@ private struct OnboardingView: View {
         case .microphone: return "Microphone access"
         case .speech: return "On-device speech recognition"
         case .accessibility: return "Accessibility access"
+        case .inputSource: return "Keyboard input source"
         case .assets: return "Download speech models"
         case .micPicker: return "Choose your microphone"
         case .done: return "Ready"
@@ -108,6 +133,8 @@ private struct OnboardingView: View {
             return "macOS may ask for Speech Recognition. Recognition runs on this Mac."
         case .accessibility:
             return "Accessibility is required so \(AppRuntime.displayName) can type and press keys in other apps. After a local rebuild, macOS treats it as a new app and this switch is off again."
+        case .inputSource:
+            return "macOS 26 no longer lists classic Input Method apps in Keyboard settings. Third-party keyboards there are Apple’s text-input extensions, which we cannot register yet. Leave IMK off and use Accessibility typing, or turn IMK off if this screen appeared."
         case .assets:
             return "The first launch downloads Apple’s on-device speech models if they are not already installed."
         case .micPicker:
@@ -123,6 +150,7 @@ private struct OnboardingView: View {
         case .microphone: return "Allow microphone"
         case .speech: return "Allow speech recognition"
         case .accessibility: return "Open Accessibility settings"
+        case .inputSource: return InputSourceSetup.status().isReady ? "Continue" : "Open Keyboard settings"
         case .assets: return "Download models"
         case .micPicker: return "Save microphone"
         case .done: return "Start listening"
@@ -151,12 +179,22 @@ private struct OnboardingView: View {
             step = .accessibility
         case .accessibility:
             if Permissions.accessibilityGranted(prompt: true) {
-                step = .assets
+                step = nextAfterAccessibility()
             } else {
                 Permissions.openAccessibilitySettings()
                 status = "Turn on \(AppRuntime.displayName) in Accessibility, then click again."
                 if Permissions.accessibilityGranted(prompt: false) {
-                    step = .assets
+                    step = nextAfterAccessibility()
+                }
+            }
+        case .inputSource:
+            if InputSourceSetup.ensure() {
+                finishInputSource()
+            } else {
+                InputSourceSetup.openSettings()
+                status = "Add \(AppRuntime.displayName) under Input Sources, select it, then click again."
+                if InputSourceSetup.ensure() {
+                    finishInputSource()
                 }
             }
         case .assets:
@@ -179,6 +217,18 @@ private struct OnboardingView: View {
                 try? SMAppService.mainApp.register()
             }
             onFinished()
+        }
+    }
+
+    private func nextAfterAccessibility() -> Step {
+        store.settings.useInputMethod ? .inputSource : .assets
+    }
+
+    private func finishInputSource() {
+        if onlyInputSource {
+            onFinished()
+        } else {
+            step = .assets
         }
     }
 }

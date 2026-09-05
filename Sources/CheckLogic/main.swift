@@ -158,6 +158,21 @@ expect(
     ) == nil,
     "default drop leftover punct"
 )
+expect(
+    DefaultPostProcess.apply(
+        PostProcessInput(
+            text: ".",
+            isPartial: false,
+            pendingLeadSpace: false,
+            lastTypedAge: 0.2,
+            lonePunctuationDelay: 0,
+            isLonePunctuation: true,
+            midSentence: false,
+            snapshot: nil
+        )
+    ) == ".",
+    "delay 0 keeps leftover punct"
+)
 if let js = try? PostProcessor.runJavaScript(
     DefaultPostProcess.javascriptSource,
     input: PostProcessInput(
@@ -255,7 +270,101 @@ expect(liveSource.contains("Typist.typeText"), "HID types when IMK is off")
 expect(liveSource.contains("setMarkedText"), "live phrase uses marked text")
 expect(liveSource.contains("DictationTextInput"), "live phrase uses text input client")
 expect(liveSource.contains("usesInputMethod"), "IMK is a setting")
+expect(liveSource.contains("shouldFinishAXMark"), "HID commit does not AX-finish")
+expect(!liveSource.contains("keepsTrailingPunctuation"), "Apple final may drop live trailing punct")
+let engineSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
+expect(engineSource.contains("noteFinal"), "final clears pending finalize")
+expect(engineSource.contains("FinalizeGate"), "speech uses finalize gate")
 expect(!AppSettings.default.useInputMethod, "IMK off by default")
+ expect(!AppSettings.default.disableFinalizeDelay, "silence finalize on by default")
+ expect(!AppSettings.default.postProcessOnlyOnFinal, "post-process live by default")
+expect(engineSource.contains("disableForcedFinalize"), "can skip silence finalize")
+expect(liveSource.contains("finishCommittedMark"), "commit always clears live mark")
+expect(LiveCommitPolicy.shouldFinishAXMark(.ax), "finish live mark after AX")
+expect(!LiveCommitPolicy.shouldFinishAXMark(.hid), "do not AX-finish after HID")
+expect(!LiveCommitPolicy.shouldFinishAXMark(.imk), "do not AX-finish after IMK")
+expect(!LiveCommitPolicy.shouldFinishAXMark(.skipped), "do not AX-finish when skipped")
+do {
+    var gate = FinalizeGate()
+    let t0 = Date()
+    gate.notePartial(at: t0)
+    expect(gate.shouldForceFinalize(delay: 0.7, now: t0.addingTimeInterval(0.7)), "force finalize after silence")
+    gate.noteFinal()
+    expect(!gate.shouldForceFinalize(delay: 0.7, now: t0.addingTimeInterval(2)), "final clears pending finalize")
+    gate.notePartial(at: t0.addingTimeInterval(2.1))
+    expect(!gate.shouldForceFinalize(delay: 0.7, now: t0.addingTimeInterval(2.2)), "new phrase not finalized instantly")
+}
+do {
+    let hid = SimulatedField(box: .openCode, text: "hello world", loc: 0, len: 5)
+    hid.apply(shaped: "goodbye", keepSelected: false, useInputMethod: false)
+    expect(hid.text == "goodbyehello world", "HID inserts into OpenCode selection")
+    expect(hid.lastPath == .hid, "OpenCode uses HID")
+}
+do {
+    let imk = SimulatedField(box: .openCode, text: "hello world", loc: 0, len: 5)
+    imk.apply(shaped: "goodbye", keepSelected: false, useInputMethod: true)
+    expect(imk.text == "goodbye world", "IMK replaces OpenCode selection")
+    expect(imk.lastPath == .imk, "OpenCode IMK path")
+}
+do {
+    let notes = SimulatedField(box: .notes, text: "Hi", loc: 2, len: 0)
+    notes.apply(shaped: "there", keepSelected: false, useInputMethod: false)
+    expect(notes.lastPath == .ax, "Notes uses AX")
+    notes.finishIfNeeded()
+    expect(notes.len == 0, "AX finish collapses selection")
+}
+do {
+    let notes = SimulatedField(box: .notes, text: "")
+    notes.apply(shaped: "This is a test.", keepSelected: true, useInputMethod: false)
+    notes.apply(shaped: "This is a test", keepSelected: false, useInputMethod: false)
+    notes.finishIfNeeded()
+    expect(notes.text == "This is a test", "Apple final replaces live trailing period")
+}
+do {
+    let notes = SimulatedField(box: .notes, text: "")
+    notes.apply(shaped: "This is another test", keepSelected: true, useInputMethod: false)
+    expect(notes.len == 20, "live mark selected")
+    notes.apply(shaped: "This is another test", keepSelected: false, useInputMethod: false)
+    notes.finishIfNeeded()
+    expect(notes.len == 0, "same-text commit clears highlight")
+    expect(notes.text == "This is another test", "same-text commit keeps words")
+}
+do {
+    PlaygroundTarget.shared.isActive = true
+    PlaygroundTarget.shared.deactivate()
+    expect(!PlaygroundTarget.shared.isActive, "playground capture turns off")
+}
+do {
+    let hid = SimulatedField(box: .slack, text: "ab", loc: 2, len: 0)
+    hid.apply(shaped: "cd", keepSelected: false, useInputMethod: false)
+    hid.finishIfNeeded()
+    expect(hid.text == "abcd", "HID slack append")
+}
+do {
+    let finderHid = SimulatedField(box: .finder, text: "")
+    finderHid.apply(shaped: "hello", keepSelected: false, useInputMethod: false)
+    expect(finderHid.text == "hello", "Finder HID types")
+    let finderImk = SimulatedField(box: .finder, text: "")
+    finderImk.apply(shaped: "hello", keepSelected: false, useInputMethod: true)
+    expect(finderImk.text == "", "Finder IMK skips")
+}
+expect(FieldBox.allCases.contains(.openCode), "opencode box exists")
+expect(
+    InputSourceSetup.shouldPrompt(InputSourceState(installed: false, enabled: false, selected: false)),
+    "missing input source prompts"
+)
+expect(
+    !InputSourceSetup.shouldPrompt(InputSourceState(installed: true, enabled: true, selected: true)),
+    "ready input source skips prompt"
+)
+expect(
+    InputSourceSetup.shouldPrompt(InputSourceState(installed: true, enabled: true, selected: false)),
+    "installed but not selected prompts"
+)
+expect(
+    InputSourceSetup.shouldPrompt(InputSourceState(installed: true, enabled: false, selected: false)),
+    "disabled input source prompts"
+)
 expect(LivePhrase.usesInputMethod() == false || DictationTextInput.override != nil, "default path is AX/HID")
 expect(!typistSource.contains("typeViaSystemEvents"), "do not type via System Events")
 let fieldSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
@@ -263,6 +372,16 @@ expect(fieldSource.contains("caretStillInMark"), "stale live mark rejected")
 let infoPlist = try! String(contentsOf: repo.appendingPathComponent("Resources/Info.plist"), encoding: .utf8)
 expect(infoPlist.contains("InputMethodConnectionName"), "app is an input method")
 expect(infoPlist.contains("DictationInputController"), "IMK controller class")
+expect(infoPlist.contains("tsVisibleInputModeOrderedArrayKey"), "input mode is listed")
+expect(infoPlist.contains("TISInputSourceID"), "TIS input source id")
+expect(infoPlist.contains("TISIntendedLanguage"), "TIS language")
+expect(
+    InputSourceSetup.inputMethodsURL(appName: "Custom Dictation Local", home: URL(fileURLWithPath: "/Users/test")).path
+        == "/Users/test/Library/Input Methods/Custom Dictation Local.app",
+    "input method install path"
+)
+let runLocal = try! String(contentsOf: repo.appendingPathComponent("scripts/run-local.sh"), encoding: .utf8)
+expect(runLocal.contains("Library/Input Methods"), "local install copies into Input Methods")
 let imkSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/IMKSession.swift"), encoding: .utf8)
 expect(imkSource.contains("IMKInputController"), "IMK input controller")
 expect(imkSource.contains("insertText"), "IMK insertText")

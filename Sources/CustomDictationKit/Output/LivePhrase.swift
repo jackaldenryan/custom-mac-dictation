@@ -7,6 +7,7 @@ public enum LivePhrase {
     nonisolated(unsafe) public static var useInputMethodOverride: Bool?
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
+    nonisolated(unsafe) private static var lastInsertPath = LiveInsertPath.skipped
 
     public static func usesInputMethod() -> Bool {
         if DictationTextInput.override != nil { return true }
@@ -22,9 +23,7 @@ public enum LivePhrase {
     public static func commit(_ text: String) {
         guard let out = shaped(text, isPartial: false) else { return }
         apply(out, keepSelected: false)
-        if !usesInputMethod() {
-            FieldEditor.finishLive()
-        }
+        finishCommittedMark()
         if !displayed.isEmpty { pendingLeadSpace = true }
         displayed = ""
         lastTypedAt = Date()
@@ -45,13 +44,23 @@ public enum LivePhrase {
 
     public static func keepAndUnhighlight() {
         guard !displayed.isEmpty else { return }
-        if usesInputMethod() {
-            DictationTextInput.current.unmarkText()
-        } else {
-            _ = FieldEditor.replaceLive(with: displayed, select: false)
-        }
+        finishCommittedMark()
         pendingLeadSpace = true
         displayed = ""
+    }
+
+    private static func finishCommittedMark() {
+        if PlaygroundTarget.shared.isActive {
+            PlaygroundTarget.shared.collapseLive()
+            return
+        }
+        if usesInputMethod() {
+            DictationTextInput.current.unmarkText()
+            return
+        }
+        if LiveCommitPolicy.shouldFinishAXMark(lastInsertPath) {
+            FieldEditor.finishLive()
+        }
     }
 
     private static func shaped(_ text: String, isPartial: Bool) -> String? {
@@ -72,7 +81,7 @@ public enum LivePhrase {
             isPartial: isPartial,
             pendingLeadSpace: pendingLeadSpace,
             lastTypedAge: Date().timeIntervalSince(lastTypedAt),
-            lonePunctuationDelay: SettingsStore.shared.settings.lonePunctuationDelaySeconds,
+            lonePunctuationDelay: SettingsStore.shared.settings.effectiveLonePunctuationDelay,
             isLonePunctuation: TranscriptNormalizer.isLonePunctuation(text),
             midSentence: phraseIsMidSentence,
             snapshot: phraseSnapshot
@@ -82,7 +91,13 @@ public enum LivePhrase {
 
     private static func apply(_ text: String, keepSelected: Bool) {
         if displayed == text { return }
-        if keepsTrailingPunctuation(displayed: displayed, incoming: text) {
+        if PlaygroundTarget.shared.isActive {
+            lastInsertPath = PlaygroundTarget.shared.apply(
+                shaped: text,
+                keepSelected: keepSelected,
+                isPartial: keepSelected && !text.isEmpty
+            )
+            displayed = lastInsertPath == .skipped ? "" : text
             return
         }
         if usesInputMethod() {
@@ -104,20 +119,24 @@ public enum LivePhrase {
         } else {
             client.insertText(text)
         }
+        lastInsertPath = .imk
         displayed = text
     }
 
     private static func applyAXHid(_ text: String, keepSelected: Bool) {
         if FieldEditor.focusedLooksLikeStub() {
             DiagnosticLog.line("Live phrase skipped; focused field is a stub")
+            lastInsertPath = .skipped
             displayed = ""
             return
         }
         if FieldEditor.replaceLive(with: text, select: keepSelected && !text.isEmpty) {
+            lastInsertPath = .ax
             displayed = text
             return
         }
         hidReplace(text)
+        lastInsertPath = .hid
         displayed = text
     }
 
@@ -134,16 +153,6 @@ public enum LivePhrase {
             Typist.typeText(text, preferAX: false)
         }
         Typist.releaseModifiers()
-    }
-
-    private static func keepsTrailingPunctuation(displayed: String, incoming: String) -> Bool {
-        let have = folds(displayed)
-        let next = folds(incoming)
-        guard have.hasPrefix(next), have.count > next.count else { return false }
-        let extra = have.dropFirst(next.count)
-        return extra.unicodeScalars.allSatisfy {
-            CharacterSet.punctuationCharacters.contains($0) || $0.properties.isWhitespace
-        }
     }
 
     private static func folds(_ text: String) -> String {

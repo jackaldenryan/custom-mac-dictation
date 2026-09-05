@@ -55,7 +55,7 @@ public struct PostProcessInput: Equatable, Sendable {
 public enum DefaultPostProcess {
     public static func apply(_ input: PostProcessInput) -> String? {
         if input.isLonePunctuation {
-            if input.lastTypedAge < input.lonePunctuationDelay { return nil }
+            if input.lonePunctuationDelay > 0, input.lastTypedAge < input.lonePunctuationDelay { return nil }
             return input.text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         var body = input.text
@@ -85,7 +85,7 @@ public enum DefaultPostProcess {
     function process(ctx) {
       var text = ctx.text || "";
       if (ctx.isLonePunctuation) {
-        if (ctx.lastTypedAge < ctx.lonePunctuationDelay) return null;
+        if (ctx.lonePunctuationDelay > 0 && ctx.lastTypedAge < ctx.lonePunctuationDelay) return null;
         return String(text).trim();
       }
       var body = text;
@@ -166,8 +166,12 @@ public enum PostProcessor {
     nonisolated(unsafe) private static var cachedContext: JSContext?
     nonisolated(unsafe) public static var lastError = ""
 
-    public static func process(_ input: PostProcessInput, settings: AppSettings) -> String? {
-        let config = settings.activePostProcessConfig
+     public static func process(_ input: PostProcessInput, settings: AppSettings) -> String? {
+         if input.isPartial, settings.postProcessOnlyOnFinal {
+             lastError = ""
+             return input.text
+         }
+         let config = settings.activePostProcessConfig
         if config.isBuiltInDefault {
             lastError = ""
             return DefaultPostProcess.apply(input)

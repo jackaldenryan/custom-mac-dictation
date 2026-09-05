@@ -19,10 +19,12 @@ bin="$(swift build -c release --show-bin-path)/$binary_name"
 rm -rf "$dist"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
-sed "s/VERSION_PLACEHOLDER/$version-local/g" "$root/Resources/Info.plist" > "$app/Contents/Info.plist"
+sed -e "s/VERSION_PLACEHOLDER/$version-local/g" \
+    -e "s/com.jackaldenryan.custom-mac-dictation</com.jackaldenryan.custom-mac-dictation.local</g" \
+    -e "s/CustomDictation_Connection/CustomDictation_Local_Connection/g" \
+    "$root/Resources/Info.plist" > "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $app_name" "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $app_name" "$app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.jackaldenryan.custom-mac-dictation.local" "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$app/Contents/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :LSEnvironment:CUSTOM_DICTATION_DEV string 1" "$app/Contents/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :LSEnvironment:CUSTOM_DICTATION_DEV 1" "$app/Contents/Info.plist"
@@ -47,8 +49,19 @@ ditto "$app" "$dst"
 xattr -dr com.apple.quarantine "$dst" || true
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dst" >/dev/null
 
+ime="$HOME/Library/Input Methods/$app_name.app"
+mkdir -p "$HOME/Library/Input Methods"
+rm -rf "$ime"
+ditto "$dst" "$ime"
+xattr -dr com.apple.quarantine "$ime" || true
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$ime" >/dev/null
+killall TextInputMenuAgent 2>/dev/null || true
+killall HIToolbox 2>/dev/null || true
+
 open -n "$dst"
 echo "Local app: $dst"
+echo "Input method: $ime"
 echo "Config: $config"
 echo "In System Settings → Privacy & Security → Accessibility, enable Custom Dictation Local (use + and pick it from Applications if it is missing)."
+echo "For IMK: System Settings → Keyboard → Input Sources, add Custom Dictation Local (often under English)."
 echo "Quit the released Custom Dictation app, or stop listening on it, so only the local app uses the mic."

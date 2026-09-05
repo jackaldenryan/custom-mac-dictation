@@ -135,9 +135,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showMainWindow() {
-        mainWindow.show(session: session, store: store, updater: updater) { [weak self] in
-            self?.showSetup()
-        }
+        mainWindow.show(
+            session: session,
+            store: store,
+            updater: updater,
+            onRunSetup: { [weak self] in
+                self?.showSetup()
+            },
+            onSetupInputSource: { [weak self] in
+                self?.showInputSourceSetup()
+            }
+        )
+    }
+
+    private func showInputSourceSetup() {
+        NSApp.setActivationPolicy(.regular)
+        onboarding.show(session: session, store: store, onlyInputSource: true) {}
     }
 
     private func presentStatusItem() {
