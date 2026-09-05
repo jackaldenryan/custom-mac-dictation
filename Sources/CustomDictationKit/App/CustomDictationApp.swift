@@ -44,24 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         sleepObserver.start()
 
-        if store.settings.hasCompletedOnboarding {
-            presentStatusItem()
-            showMainWindow()
-            if store.settings.launchAtLogin, !AppRuntime.isLocalTest {
-                try? SMAppService.mainApp.register()
-            }
-            Task {
-                await session.restorePreferredState()
-                if !AppRuntime.isLocalTest {
-                    await updater.check(interactive: false)
-                }
-            }
+        if Permissions.shouldShowSetup(
+            hasCompletedOnboarding: store.settings.hasCompletedOnboarding,
+            accessibilityGranted: Permissions.accessibilityGranted(prompt: false),
+            microphoneAuthorized: Permissions.microphoneAuthorized()
+        ) {
+            showSetup()
         } else {
-            NSApp.setActivationPolicy(.regular)
-            onboarding.show(session: session, store: store) { [weak self] in
-                self?.presentStatusItem()
-                self?.showMainWindow()
-            }
+            presentMain()
         }
     }
 
@@ -120,8 +110,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.windowsMenu = windowMenu
     }
 
+    private func showSetup() {
+        NSApp.setActivationPolicy(.regular)
+        onboarding.show(session: session, store: store) { [weak self] in
+            self?.presentMain()
+        }
+    }
+
+    private func presentMain() {
+        presentStatusItem()
+        showMainWindow()
+        if store.settings.launchAtLogin, !AppRuntime.isLocalTest {
+            try? SMAppService.mainApp.register()
+        }
+        Task {
+            await session.restorePreferredState()
+            if !AppRuntime.isLocalTest {
+                await updater.check(interactive: false)
+            }
+        }
+    }
+
     private func showMainWindow() {
-        mainWindow.show(session: session, store: store, updater: updater)
+        mainWindow.show(session: session, store: store, updater: updater) { [weak self] in
+            self?.showSetup()
+        }
     }
 
     private func presentStatusItem() {

@@ -238,4 +238,92 @@ expect(
     "stop listening while listening"
 )
 
+expect(LiveMarkLogic.caretStillInMark(caret: 4, markStart: 4), "live mark only at start")
+expect(!LiveMarkLogic.caretStillInMark(caret: 12, markStart: 4), "click away from live mark")
+
+let repo = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+let typistSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/Typist.swift"), encoding: .utf8)
+let liveSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/LivePhrase.swift"), encoding: .utf8)
+expect(!typistSource.contains("selectBackward"), "never shift-select live phrase")
+expect(typistSource.contains("releaseModifiers"), "release stuck modifiers")
+expect(!liveSource.contains("selectBackward"), "live phrase does not shift-select")
+expect(liveSource.contains("finishLive"), "commit finishes live mark")
+expect(!typistSource.contains("typeViaSystemEvents"), "do not type via System Events")
+let fieldSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
+expect(fieldSource.contains("finishLive"), "field editor can collapse live mark")
+expect(fieldSource.contains("caretStillInMark"), "stale live mark rejected")
+
+expect(ClickGrammar.parse("double click")?.times == 2, "double click")
+expect(ClickGrammar.parse("triple click")?.times == 3, "triple click")
+expect(ClickGrammar.parse("right click")?.right == true, "right click")
+expect(ClickGrammar.parse("command double click")?.times == 2, "command double click")
+expect(ClickGrammar.parse("command double click")?.flags.contains(.maskCommand) == true, "command on double click")
+expect(ClickGrammar.parse("shift right click")?.right == true, "shift right click")
+expect(ClickGrammar.parse("press command click")?.flags.contains(.maskCommand) == true, "press command click")
+expect(ClickGrammar.parse("hello click") == nil, "hello click not grammar")
+expect(ClickGrammar.shouldHold("command"), "hold command toward click")
+expect(ClickGrammar.shouldHold("double"), "hold double toward click")
+expect(!ClickGrammar.shouldHold("hello"), "hello not click hold")
+expect(Router.shouldHoldLive(transcript: "triple click", state: .listening, settings: .default), "hold triple click")
+expect(Router.shouldHoldLive(transcript: "right click", state: .listening, settings: .default), "hold right click")
+expect(Router.shouldHoldLive(transcript: "capitalize that", state: .listening, settings: .default), "hold capitalize that")
+expect(Router.shouldHoldLive(transcript: "lowercase that", state: .listening, settings: .default), "hold lowercase that")
+expect(KeyPressGrammar.parse("press the c key")?.keyCode == 8, "press c")
+expect(KeyPressGrammar.parse("press the p key")?.keyCode == 35, "press p")
+expect(KeyPressGrammar.parse("press space")?.keyCode == 49, "press space")
+expect(KeyPressGrammar.parse("press escape")?.keyCode == 53, "press escape")
+expect(KeyPressGrammar.parse("press the delete key")?.keyCode == 51, "press delete")
+expect(KeyPressGrammar.parse("press down")?.keyCode == 125, "press down")
+expect(KeyPressGrammar.parse("press up")?.keyCode == 126, "press up")
+expect(KeyPressGrammar.parse("press left")?.keyCode == 123, "press left")
+expect(KeyPressGrammar.parse("press right")?.keyCode == 124, "press right")
+expect(TranscriptNormalizer.normalize("Uppercase that.") == "uppercase that", "normalize uppercase that")
+expect(TranscriptNormalizer.normalize("  Hello,  World!  ") == "hello world", "normalize extra space")
+expect(TranscriptNormalizer.isLonePunctuation("!"), "lone bang")
+expect(TranscriptNormalizer.isLonePunctuation(","), "lone comma")
+expect(!TranscriptNormalizer.isLonePunctuation("..."), "ellipsis not lone")
+expect(LiveMarkLogic.caretStillInMark(caret: 0, markStart: 0), "mark at zero")
+expect(!LiveMarkLogic.caretStillInMark(caret: 1, markStart: 0), "caret moved one")
+expect(!LiveMarkLogic.caretStillInMark(caret: 0, markStart: 8), "caret before mark")
+expect(CommandSpec.builtIns.contains { $0.action == .uppercase }, "builtin uppercase")
+expect(CommandSpec.builtIns.contains { $0.action == .lowercase }, "builtin lowercase")
+expect(CommandSpec.builtIns.contains { $0.action == .capitalize }, "builtin capitalize")
+expect(CommandSpec.builtIns.contains { $0.phrases.contains("uppercase that") }, "uppercase that phrase")
+expect(
+    Router.handle(
+        transcript: "",
+        state: .listening,
+        settings: .default,
+        onStartListening: {},
+        onStopListening: {}
+    ) == .ignored,
+    "empty transcript ignored"
+)
+expect(Router.shouldHoldLive(transcript: "hello", state: .suspended, settings: .default), "suspended holds live")
+
+LivePhrase.noteCommand()
+let ageAfterCommand = Date().timeIntervalSince(LivePhrase.lastTypedAt)
+expect(ageAfterCommand < 0.4, "noteCommand is recent")
+expect(
+    PhraseSimulation.typed(into: "Hi", transcript: ".", lastTypedAge: ageAfterCommand) == nil,
+    "period after command is leftover"
+)
+expect(
+    PhraseSimulation.typed(into: "Hi", transcript: ".", lastTypedAge: 0) == nil,
+    "age zero leftover period"
+)
+expect(
+    PhraseSimulation.typed(into: "Hi", transcript: ".", lastTypedAge: 1) == ".",
+    "period after pause types"
+)
+
+expect(!Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGranted: true, microphoneAuthorized: true), "setup done")
+expect(Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGranted: false, microphoneAuthorized: true), "ax missing shows setup")
+expect(Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGranted: true, microphoneAuthorized: false), "mic missing shows setup")
+expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityGranted: true, microphoneAuthorized: true), "first launch shows setup")
+expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityGranted: false, microphoneAuthorized: false), "nothing granted shows setup")
+
 print("CheckLogic passed")

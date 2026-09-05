@@ -145,9 +145,6 @@ public final class ListeningSession: ObservableObject {
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
             return
         }
-        if let snap = InsertionContext.snapshot(), snap.selectedLength > 0 {
-            return
-        }
         LivePhrase.show(text)
     }
 

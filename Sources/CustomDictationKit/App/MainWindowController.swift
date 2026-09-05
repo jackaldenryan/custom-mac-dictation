@@ -8,14 +8,14 @@ import UniformTypeIdentifiers
 public final class MainWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
-    public func show(session: ListeningSession, store: SettingsStore, updater: UpdateController) {
+    public func show(session: ListeningSession, store: SettingsStore, updater: UpdateController, onRunSetup: @escaping () -> Void = {}) {
         NSApp.setActivationPolicy(.regular)
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
             return
         }
-        let root = AppRootView(session: session, store: store, updater: updater)
+        let root = AppRootView(session: session, store: store, updater: updater, onRunSetup: onRunSetup)
         let hosting = NSHostingController(rootView: root)
         hosting.sizingOptions = []
         let window = NSWindow(contentViewController: hosting)
@@ -59,6 +59,7 @@ private struct AppRootView: View {
     @ObservedObject var session: ListeningSession
     let store: SettingsStore
     @ObservedObject var updater: UpdateController
+    var onRunSetup: () -> Void = {}
     @State private var settings: AppSettings = .default
     @State private var mics: [MicrophoneDevice] = []
     @State private var logText = ""
@@ -161,7 +162,7 @@ private struct AppRootView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !accessibilityTrusted {
-                Text("Accessibility is off, so nothing can be typed into other apps. Enable Custom Dictation in System Settings → Privacy & Security → Accessibility.")
+                Text("Accessibility is off, so nothing can be typed into other apps. Enable \(AppRuntime.displayName) in System Settings → Privacy & Security → Accessibility.")
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -187,6 +188,11 @@ private struct AppRootView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                 }
+                Button("Set up permissions") {
+                    onRunSetup()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("Try it here")

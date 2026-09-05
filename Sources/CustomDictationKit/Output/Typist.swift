@@ -4,10 +4,18 @@ import CoreGraphics
 import Foundation
 
 public enum Typist {
-    public static func typeText(_ text: String) {
+    public static func typeText(_ text: String, preferAX: Bool = true) {
         guard !text.isEmpty else { return }
         if !AXIsProcessTrusted() {
             DiagnosticLog.line("Type skipped; Accessibility not granted")
+            return
+        }
+        if FieldEditor.focusedLooksLikeStub() {
+            DiagnosticLog.line("Type skipped; focused field is a stub")
+            return
+        }
+        if preferAX, FieldEditor.insert(text) {
+            DiagnosticLog.line("AX inserted \(text.utf16.count) utf16 into \(frontAppName())")
             return
         }
         let units = Array(text.utf16)
@@ -29,7 +37,8 @@ public enum Typist {
         flags: CGEventFlags,
         character: String? = nil,
         times: Int = 1,
-        intervalSeconds: Double = AppSettings.defaultKeyRepeatDelaySeconds
+        intervalSeconds: Double = AppSettings.defaultKeyRepeatDelaySeconds,
+        hidSystem: Bool = false
     ) {
         if !AXIsProcessTrusted() {
             DiagnosticLog.line("Key skipped; Accessibility not granted")
@@ -37,7 +46,7 @@ public enum Typist {
         }
         let repeats = min(75, max(1, times))
         let gap = AppSettings.clampedKeyRepeatDelay(intervalSeconds)
-        let source = CGEventSource(stateID: .privateState)
+        let source = CGEventSource(stateID: hidSystem ? .hidSystemState : .privateState)
         source?.localEventsSuppressionInterval = 0
         postModifiers(source: source, flags: flags, keyDown: true)
         for index in 0..<repeats {
@@ -47,6 +56,7 @@ public enum Typist {
             pressKey(keyCode, flags: flags, source: source, character: flags.isEmpty ? character : nil)
         }
         postModifiers(source: source, flags: flags, keyDown: false)
+        releaseModifiers()
         if flags.contains(.maskShift) {
             clearUnintendedCapsLock()
         }
@@ -55,6 +65,15 @@ public enum Typist {
 
     public static func deleteSelection() {
         pressKey(51, flags: [])
+    }
+
+    public static func releaseModifiers() {
+        let source = CGEventSource(stateID: .hidSystemState)
+        for code: UInt16 in [56, 60, 55, 54, 58, 61, 59, 62, 63] {
+            let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false)
+            up?.flags = []
+            up?.post(tap: .cghidEventTap)
+        }
     }
 
     public static func deleteBackward(times: Int) {
@@ -77,6 +96,9 @@ public enum Typist {
         let repeats = min(75, max(1, times))
         if !flags.isEmpty, systemEventsClick(flags: flags, right: right, times: repeats) {
             DiagnosticLog.line("System Events clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
+            return
+        }
+        if flags.isEmpty, !right, FieldEditor.pressAtMouse(times: repeats) {
             return
         }
         let point = cgMouseLocation()
@@ -104,7 +126,31 @@ public enum Typist {
             }
         }
         postModifiers(source: keys, flags: flags, keyDown: false)
+        releaseModifiers()
         DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
+    }
+
+    public static func systemEventsKeystroke(_ key: String, command: Bool) -> Bool {
+        let escaped = appleScriptEscape(key)
+        let using = command ? " using command down" : ""
+        let source = """
+        tell application "System Events"
+        keystroke "\(escaped)"\(using)
+        end tell
+        """
+        var error: NSDictionary?
+        _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        if let error {
+            DiagnosticLog.line("System Events keystroke failed: \(error)")
+            return false
+        }
+        return true
+    }
+
+    private static func appleScriptEscape(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     private static func systemEventsClick(flags: CGEventFlags, right: Bool, times: Int) -> Bool {

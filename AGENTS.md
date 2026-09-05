@@ -28,4 +28,24 @@ swift run CheckPhraseRules
 swift run CheckLogic
 ```
 
-CheckPhraseRules is the desired typing rules (spaces, capitals, leftover punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks.
+```
+swift run CheckFieldScenarios
+```
+
+Or all three in parallel:
+
+```
+./scripts/check.sh
+```
+
+CheckPhraseRules is the desired typing rules (spaces, capitals, leftover punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, leftover period).
+
+## Tests for every bug
+
+When we fix a bug, add a regression test in the same change. Do not ship the fix without it.
+
+- Phrase/spacing/punctuation → `CheckPhraseRules`
+- Parser, commands, live-mark rules, “must not shift-select / stick modifiers” → `CheckLogic`
+- Text-box / caret / selection / Slack / Cursor / Notes insertion → `CheckFieldScenarios`
+
+Name the case after the failure (e.g. next sentence must go at the caret, not the old live mark).

@@ -138,6 +138,7 @@ public enum Router {
             return .handled
         case .keyPressGrammar:
             guard let key = KeyPressGrammar.parse(transcript) else { return .ignored }
+            LivePhrase.noteCommand()
             Typist.press(
                 keyCode: key.keyCode,
                 flags: key.flags,
@@ -147,6 +148,7 @@ public enum Router {
             )
             return .handled
         case .click:
+            LivePhrase.noteCommand()
             if command.match == .clickGrammar {
                 guard let click = ClickGrammar.parse(transcript) else { return .ignored }
                 Typist.click(flags: click.flags, right: click.right, times: click.times)
@@ -193,6 +195,7 @@ public enum Router {
             return transform(.lowercase)
         case .shortcut:
             guard let keyCode = command.keyCode else { return .failed("That shortcut is incomplete") }
+            LivePhrase.noteCommand()
             Typist.pressShortcut(keyCode: keyCode, modifierFlags: command.modifierFlags ?? 0)
             return .handled
         case .pasteText:
@@ -227,6 +230,7 @@ public enum Router {
 
     private static func transform(_ kind: SelectionTransform.Kind) -> RouteResult {
         do {
+            LivePhrase.noteCommand()
             try SelectionTransform.apply(kind)
             return .handled
         } catch {

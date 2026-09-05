@@ -30,6 +30,23 @@ public enum Permissions {
         }
     }
 
+    public static func microphoneAuthorized() -> Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+    }
+
+    public static func needsSetup() -> Bool {
+        if !accessibilityGranted(prompt: false) { return true }
+        return !microphoneAuthorized()
+    }
+
+    public static func shouldShowSetup(
+        hasCompletedOnboarding: Bool,
+        accessibilityGranted: Bool,
+        microphoneAuthorized: Bool
+    ) -> Bool {
+        !accessibilityGranted || !microphoneAuthorized || !hasCompletedOnboarding
+    }
+
     public static func accessibilityGranted(prompt: Bool) -> Bool {
         if prompt {
             let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary

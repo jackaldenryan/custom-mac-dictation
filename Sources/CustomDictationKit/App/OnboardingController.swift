@@ -7,6 +7,11 @@ public final class OnboardingController {
     private var window: NSWindow?
 
     public func show(session: ListeningSession, store: SettingsStore, onFinished: @escaping () -> Void) {
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         let root = OnboardingView(session: session, store: store) { [weak self] in
             self?.window?.close()
             self?.window = nil
@@ -102,7 +107,7 @@ private struct OnboardingView: View {
         case .speech:
             return "macOS may ask for Speech Recognition. Recognition runs on this Mac."
         case .accessibility:
-            return "Accessibility is required so the app can type and press keys in other apps. It does not read other apps’ interface trees."
+            return "Accessibility is required so \(AppRuntime.displayName) can type and press keys in other apps. After a local rebuild, macOS treats it as a new app and this switch is off again."
         case .assets:
             return "The first launch downloads Apple’s on-device speech models if they are not already installed."
         case .micPicker:
@@ -149,7 +154,7 @@ private struct OnboardingView: View {
                 step = .assets
             } else {
                 Permissions.openAccessibilitySettings()
-                status = "Turn on Custom Dictation in Accessibility, then click again."
+                status = "Turn on \(AppRuntime.displayName) in Accessibility, then click again."
                 if Permissions.accessibilityGranted(prompt: false) {
                     step = .assets
                 }

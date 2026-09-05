@@ -31,6 +31,11 @@ let package = Package(
             name: "CheckPhraseRules",
             dependencies: ["CustomDictationKit"],
             path: "Sources/CheckPhraseRules"
+        ),
+        .executableTarget(
+            name: "CheckFieldScenarios",
+            dependencies: ["CustomDictationKit"],
+            path: "Sources/CheckFieldScenarios"
         )
     ]
 )
