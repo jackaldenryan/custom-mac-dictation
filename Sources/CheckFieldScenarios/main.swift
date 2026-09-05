@@ -15,6 +15,8 @@ enum Box: String {
     case cursorEditor
     case cursorStub
     case zoom
+    case finder
+    case notesSidebar
 }
 
 struct Want {
@@ -38,20 +40,23 @@ struct BoxProfile {
     var unicodeReplacesSelection: Bool
     var electronCopy: Bool
     var stubFocused: Bool
+    var hasClient: Bool
 }
 
 func profile(_ box: Box) -> BoxProfile {
     switch box {
     case .notes, .chromeURL:
-        return BoxProfile(axWrite: true, unicodeReplacesSelection: true, electronCopy: true, stubFocused: false)
+        return BoxProfile(axWrite: true, unicodeReplacesSelection: true, electronCopy: true, stubFocused: false, hasClient: true)
     case .googleSearch, .zoom:
-        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: true, stubFocused: false)
+        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: true, stubFocused: false, hasClient: true)
     case .slack:
-        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: false)
+        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: false, hasClient: true)
     case .cursorEditor:
-        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: false)
+        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: false, hasClient: true)
     case .cursorStub:
-        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: true)
+        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: true, hasClient: false)
+    case .finder, .notesSidebar:
+        return BoxProfile(axWrite: false, unicodeReplacesSelection: false, electronCopy: false, stubFocused: false, hasClient: false)
     }
 }
 
@@ -123,6 +128,7 @@ final class Doc {
             stubText += s
             return
         }
+        if !p.hasClient { return }
         if !p.unicodeReplacesSelection {
             let ns = text as NSString
             text = ns.replacingCharacters(in: NSRange(location: loc, length: 0), with: s)
@@ -165,7 +171,7 @@ final class Doc {
     }
 
     private func desiredDictation(partials: [String], final: String) {
-        if p.stubFocused { return }
+        if !p.hasClient { return }
         if len > 0 { deleteSelection() }
         markStart = loc
         let steps = partials + [final]
@@ -673,6 +679,21 @@ let extraFieldCases: [Case] = {
         let d = Doc(text: "world", loc: 0, box: .notes, engine: engine)
         d.dictation(partials: [], final: "hello")
         return (d.snapshot(), Want(text: "Helloworld"))
+    })
+    extra.append(Case(name: "finder dictation does nothing") { engine in
+        let d = Doc(text: "", box: .finder, engine: engine)
+        d.dictation(partials: ["hello"], final: "hello")
+        return (d.snapshot(), Want(text: "", intoStub: false, liveVisible: false))
+    })
+    extra.append(Case(name: "finder does not select files") { engine in
+        let d = Doc(text: "Documents", loc: 0, box: .finder, engine: engine)
+        d.dictation(partials: ["notes"], final: "notes")
+        return (d.snapshot(), Want(text: "Documents", intoStub: false))
+    })
+    extra.append(Case(name: "notes sidebar dictation does nothing") { engine in
+        let d = Doc(text: "All iCloud", loc: 0, box: .notesSidebar, engine: engine)
+        d.dictation(partials: ["Hello", "Hello world"], final: "Hello world")
+        return (d.snapshot(), Want(text: "All iCloud", intoStub: false, liveVisible: false))
     })
     return extra
 }()

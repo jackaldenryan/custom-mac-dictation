@@ -15,7 +15,6 @@ public enum LivePhrase {
     public static func commit(_ text: String) {
         guard let out = shaped(text, isPartial: false) else { return }
         apply(out, keepSelected: false)
-        FieldEditor.finishLive()
         if !displayed.isEmpty { pendingLeadSpace = true }
         displayed = ""
         lastTypedAt = Date()
@@ -24,7 +23,6 @@ public enum LivePhrase {
     public static func discard() {
         apply("", keepSelected: false)
         displayed = ""
-        FieldEditor.clearLive()
     }
 
     public static func noteCommand() {
@@ -34,14 +32,14 @@ public enum LivePhrase {
 
     public static func keepAndUnhighlight() {
         guard !displayed.isEmpty else { return }
-        _ = FieldEditor.replaceLive(with: displayed, select: false)
+        DictationTextInput.current.unmarkText()
         pendingLeadSpace = true
         displayed = ""
     }
 
     private static func shaped(_ text: String, isPartial: Bool) -> String? {
         if displayed.isEmpty {
-            phraseSnapshot = InsertionContext.snapshot()
+            phraseSnapshot = DictationTextInput.current.caretSnapshot() ?? InsertionContext.snapshot()
             if let snap = phraseSnapshot {
                 phraseIsMidSentence = !InsertionContext.impliesSentenceStart(snap)
             } else {
@@ -66,32 +64,18 @@ public enum LivePhrase {
         if keepsTrailingPunctuation(displayed: displayed, incoming: text) {
             return
         }
-        if FieldEditor.focusedLooksLikeStub() {
-            DiagnosticLog.line("Live phrase skipped; focused field is a stub")
+        let client = DictationTextInput.current
+        guard client.isAvailable else {
+            DiagnosticLog.line("Live phrase skipped; no text input client")
             displayed = ""
             return
         }
-        if FieldEditor.replaceLive(with: text, select: keepSelected && !text.isEmpty) {
-            displayed = text
-            return
-        }
-        hidReplace(text)
-        displayed = text
-    }
-
-    private static func hidReplace(_ text: String) {
-        if displayed.isEmpty {
-            if FieldEditor.hasSelection() {
-                Typist.deleteSelection()
-            }
-            Typist.typeText(text, preferAX: false)
-        } else if folds(text).hasPrefix(folds(displayed)) {
-            Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false)
+        if keepSelected, !text.isEmpty {
+            client.setMarkedText(text)
         } else {
-            Typist.deleteBackward(times: (displayed as NSString).length)
-            Typist.typeText(text, preferAX: false)
+            client.insertText(text)
         }
-        Typist.releaseModifiers()
+        displayed = text
     }
 
     private static func keepsTrailingPunctuation(displayed: String, incoming: String) -> Bool {

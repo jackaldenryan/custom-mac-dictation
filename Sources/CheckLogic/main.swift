@@ -250,11 +250,21 @@ let liveSource = try! String(contentsOf: repo.appendingPathComponent("Sources/Cu
 expect(!typistSource.contains("selectBackward"), "never shift-select live phrase")
 expect(typistSource.contains("releaseModifiers"), "release stuck modifiers")
 expect(!liveSource.contains("selectBackward"), "live phrase does not shift-select")
-expect(liveSource.contains("finishLive"), "commit finishes live mark")
+expect(!liveSource.contains("hidReplace"), "live phrase does not HID")
+expect(!liveSource.contains("Typist.typeText"), "live phrase does not fake a keyboard")
+expect(liveSource.contains("setMarkedText"), "live phrase uses marked text")
+expect(liveSource.contains("DictationTextInput"), "live phrase uses text input client")
 expect(!typistSource.contains("typeViaSystemEvents"), "do not type via System Events")
 let fieldSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
-expect(fieldSource.contains("finishLive"), "field editor can collapse live mark")
 expect(fieldSource.contains("caretStillInMark"), "stale live mark rejected")
+let infoPlist = try! String(contentsOf: repo.appendingPathComponent("Resources/Info.plist"), encoding: .utf8)
+expect(infoPlist.contains("InputMethodConnectionName"), "app is an input method")
+expect(infoPlist.contains("DictationInputController"), "IMK controller class")
+let imkSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/IMKSession.swift"), encoding: .utf8)
+expect(imkSource.contains("IMKInputController"), "IMK input controller")
+expect(imkSource.contains("insertText"), "IMK insertText")
+expect(imkSource.contains("setMarkedText"), "IMK setMarkedText")
+expect(imkSource.contains("return false"), "keyboard keys pass through")
 
 expect(ClickGrammar.parse("double click")?.times == 2, "double click")
 expect(ClickGrammar.parse("triple click")?.times == 3, "triple click")
@@ -325,5 +335,80 @@ expect(Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGr
 expect(Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGranted: true, microphoneAuthorized: false), "mic missing shows setup")
 expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityGranted: true, microphoneAuthorized: true), "first launch shows setup")
 expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityGranted: false, microphoneAuthorized: false), "nothing granted shows setup")
+
+do {
+    let doc = MemoryTextInput(text: "Hello world", location: 6, length: 5)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    expect(doc.isAvailable, "memory client available")
+    doc.insertText("there")
+    expect(doc.text == "Hello there", "insertText replaces selection")
+    expect(doc.location == 11, "caret after insert")
+}
+
+do {
+    let doc = MemoryTextInput(text: "", location: 0, length: 0)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    doc.setMarkedText("Hel")
+    doc.setMarkedText("Hello")
+    expect(doc.text == "Hello", "marked text replaces mark not append")
+    doc.insertText("Hello")
+    expect(doc.text == "Hello", "insert commits marked text")
+}
+
+do {
+    let doc = MemoryTextInput(text: "Documents", location: 0, length: 0, isAvailable: false)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    doc.insertText("hello")
+    doc.setMarkedText("hello")
+    expect(doc.text == "Documents", "no client does not type")
+}
+
+do {
+    let doc = MemoryTextInput(text: "hello world", location: 6, length: 5)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    expect(doc.selectedString() == "world", "selected string")
+    try SelectionTransform.apply(.uppercase)
+    expect(doc.text == "hello WORLD", "uppercase via text client")
+}
+
+do {
+    let doc = MemoryTextInput(text: "hello", location: 5, length: 0)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    var failed = false
+    do {
+        try SelectionTransform.apply(.uppercase)
+    } catch {
+        failed = true
+    }
+    expect(failed, "uppercase with no selection fails")
+    expect(doc.text == "hello", "no selection leaves text")
+}
+
+do {
+    let doc = MemoryTextInput(text: "", location: 0, length: 0)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    LivePhrase.displayed = ""
+    LivePhrase.pendingLeadSpace = false
+    LivePhrase.show("Hello")
+    LivePhrase.show("Hello world")
+    LivePhrase.commit("Hello world")
+    expect(doc.text == "Hello world", "live phrase through text client")
+}
+
+do {
+    let doc = MemoryTextInput(text: "sidebar", location: 0, length: 0, isAvailable: false)
+    DictationTextInput.override = doc
+    defer { DictationTextInput.override = nil }
+    LivePhrase.displayed = ""
+    LivePhrase.show("Hello")
+    LivePhrase.commit("Hello")
+    expect(doc.text == "sidebar", "live phrase skips when no client")
+}
 
 print("CheckLogic passed")
