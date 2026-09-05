@@ -231,6 +231,14 @@ private struct AppRootView: View {
                 Section("Startup") {
                     Toggle("Open at login", isOn: launchBinding)
                 }
+                if AppRuntime.isLocalTest {
+                    Section("Typing") {
+                        Toggle("Use Input Method (IMK)", isOn: inputMethodBinding)
+                        Text("On: insertText into the focused text client (Voice Control-like). Enable Custom Dictation Local as an input source. Off: Accessibility, then keyboard events.")
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 Section("Finish a phrase after") {
                     Picker("Silence", selection: finalizeMenuBinding) {
                         ForEach(0...20, id: \.self) { tenths in
@@ -757,6 +765,19 @@ private struct AppRootView: View {
                 persist()
                 if session.state == .listening {
                     Task { await session.startListening() }
+                }
+            }
+        )
+    }
+
+    private var inputMethodBinding: Binding<Bool> {
+        Binding(
+            get: { settings.useInputMethod },
+            set: { on in
+                settings.useInputMethod = on
+                persist()
+                if on {
+                    DictationInputServer.start()
                 }
             }
         )

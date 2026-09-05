@@ -4,8 +4,15 @@ public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
     nonisolated(unsafe) public static var lastTypedAt = Date.distantPast
+    nonisolated(unsafe) public static var useInputMethodOverride: Bool?
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
+
+    public static func usesInputMethod() -> Bool {
+        if DictationTextInput.override != nil { return true }
+        if let override = useInputMethodOverride { return override }
+        return SettingsStore.shared.settings.useInputMethod
+    }
 
     public static func show(_ text: String) {
         guard let out = shaped(text, isPartial: true) else { return }
@@ -15,6 +22,9 @@ public enum LivePhrase {
     public static func commit(_ text: String) {
         guard let out = shaped(text, isPartial: false) else { return }
         apply(out, keepSelected: false)
+        if !usesInputMethod() {
+            FieldEditor.finishLive()
+        }
         if !displayed.isEmpty { pendingLeadSpace = true }
         displayed = ""
         lastTypedAt = Date()
@@ -23,6 +33,9 @@ public enum LivePhrase {
     public static func discard() {
         apply("", keepSelected: false)
         displayed = ""
+        if !usesInputMethod() {
+            FieldEditor.clearLive()
+        }
     }
 
     public static func noteCommand() {
@@ -32,14 +45,22 @@ public enum LivePhrase {
 
     public static func keepAndUnhighlight() {
         guard !displayed.isEmpty else { return }
-        DictationTextInput.current.unmarkText()
+        if usesInputMethod() {
+            DictationTextInput.current.unmarkText()
+        } else {
+            _ = FieldEditor.replaceLive(with: displayed, select: false)
+        }
         pendingLeadSpace = true
         displayed = ""
     }
 
     private static func shaped(_ text: String, isPartial: Bool) -> String? {
         if displayed.isEmpty {
-            phraseSnapshot = DictationTextInput.current.caretSnapshot() ?? InsertionContext.snapshot()
+            if usesInputMethod() {
+                phraseSnapshot = DictationTextInput.current.caretSnapshot() ?? InsertionContext.snapshot()
+            } else {
+                phraseSnapshot = InsertionContext.snapshot()
+            }
             if let snap = phraseSnapshot {
                 phraseIsMidSentence = !InsertionContext.impliesSentenceStart(snap)
             } else {
@@ -64,6 +85,14 @@ public enum LivePhrase {
         if keepsTrailingPunctuation(displayed: displayed, incoming: text) {
             return
         }
+        if usesInputMethod() {
+            applyInputMethod(text, keepSelected: keepSelected)
+            return
+        }
+        applyAXHid(text, keepSelected: keepSelected)
+    }
+
+    private static func applyInputMethod(_ text: String, keepSelected: Bool) {
         let client = DictationTextInput.current
         guard client.isAvailable else {
             DiagnosticLog.line("Live phrase skipped; no text input client")
@@ -76,6 +105,35 @@ public enum LivePhrase {
             client.insertText(text)
         }
         displayed = text
+    }
+
+    private static func applyAXHid(_ text: String, keepSelected: Bool) {
+        if FieldEditor.focusedLooksLikeStub() {
+            DiagnosticLog.line("Live phrase skipped; focused field is a stub")
+            displayed = ""
+            return
+        }
+        if FieldEditor.replaceLive(with: text, select: keepSelected && !text.isEmpty) {
+            displayed = text
+            return
+        }
+        hidReplace(text)
+        displayed = text
+    }
+
+    private static func hidReplace(_ text: String) {
+        if displayed.isEmpty {
+            if FieldEditor.hasSelection() {
+                Typist.deleteSelection()
+            }
+            Typist.typeText(text, preferAX: false)
+        } else if folds(text).hasPrefix(folds(displayed)) {
+            Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false)
+        } else {
+            Typist.deleteBackward(times: (displayed as NSString).length)
+            Typist.typeText(text, preferAX: false)
+        }
+        Typist.releaseModifiers()
     }
 
     private static func keepsTrailingPunctuation(displayed: String, incoming: String) -> Bool {

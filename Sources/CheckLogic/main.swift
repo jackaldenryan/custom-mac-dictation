@@ -250,10 +250,13 @@ let liveSource = try! String(contentsOf: repo.appendingPathComponent("Sources/Cu
 expect(!typistSource.contains("selectBackward"), "never shift-select live phrase")
 expect(typistSource.contains("releaseModifiers"), "release stuck modifiers")
 expect(!liveSource.contains("selectBackward"), "live phrase does not shift-select")
-expect(!liveSource.contains("hidReplace"), "live phrase does not HID")
-expect(!liveSource.contains("Typist.typeText"), "live phrase does not fake a keyboard")
+expect(liveSource.contains("hidReplace"), "AX/HID path kept")
+expect(liveSource.contains("Typist.typeText"), "HID types when IMK is off")
 expect(liveSource.contains("setMarkedText"), "live phrase uses marked text")
 expect(liveSource.contains("DictationTextInput"), "live phrase uses text input client")
+expect(liveSource.contains("usesInputMethod"), "IMK is a setting")
+expect(!AppSettings.default.useInputMethod, "IMK off by default")
+expect(LivePhrase.usesInputMethod() == false || DictationTextInput.override != nil, "default path is AX/HID")
 expect(!typistSource.contains("typeViaSystemEvents"), "do not type via System Events")
 let fieldSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
 expect(fieldSource.contains("caretStillInMark"), "stale live mark rejected")
@@ -393,12 +396,20 @@ do {
     let doc = MemoryTextInput(text: "", location: 0, length: 0)
     DictationTextInput.override = doc
     defer { DictationTextInput.override = nil }
+    expect(LivePhrase.usesInputMethod(), "override forces IMK")
     LivePhrase.displayed = ""
     LivePhrase.pendingLeadSpace = false
     LivePhrase.show("Hello")
     LivePhrase.show("Hello world")
     LivePhrase.commit("Hello world")
     expect(doc.text == "Hello world", "live phrase through text client")
+}
+
+do {
+    LivePhrase.useInputMethodOverride = false
+    DictationTextInput.override = nil
+    defer { LivePhrase.useInputMethodOverride = nil }
+    expect(!LivePhrase.usesInputMethod(), "override off is AX/HID")
 }
 
 do {

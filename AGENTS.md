@@ -10,7 +10,7 @@ Build a second app that does not replace `/Applications/Custom Dictation.app` an
 
 That installs **Custom Dictation Local** to `/Applications` (not the released app). Config is `~/.custom-dictation-config-local`. Login items and update checks are off.
 
-Dictation inserts through an **Input Method** (`insertText` / `setMarkedText`), not HID. Enable **Custom Dictation** (or Custom Dictation Local) as an input source in System Settings → Keyboard → Input Sources. Hardware keys pass through. Clicks and “press the C key” still use Accessibility.
+Local app only: Listen → **Use Input Method (IMK)**. Off (default) is Accessibility then keyboard events. On uses `insertText` / `setMarkedText`; enable **Custom Dictation Local** as an input source. Clicks and “press the C key” still use Accessibility.
 
 Enable **Custom Dictation Local** in System Settings → Privacy & Security → Accessibility (and Microphone). It is a different app from Custom Dictation. If it is not in the list, click + and choose it from Applications.
 

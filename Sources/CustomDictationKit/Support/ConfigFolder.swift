@@ -381,6 +381,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
+    public var useInputMethod: Bool
 
     public init(_ settings: AppSettings) {
         hasCompletedOnboarding = settings.hasCompletedOnboarding
@@ -388,6 +389,36 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         punctuationModes = settings.punctuationModes
         launchAtLogin = settings.launchAtLogin
         preferredListeningState = settings.preferredListeningState
+        useInputMethod = settings.useInputMethod
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case hasCompletedOnboarding
+        case microphoneUID
+        case punctuationModes
+        case launchAtLogin
+        case preferredListeningState
+        case useInputMethod
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hasCompletedOnboarding = try c.decode(Bool.self, forKey: .hasCompletedOnboarding)
+        microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID)
+        punctuationModes = try c.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
+        launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
+        preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
+        useInputMethod = try c.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+        try c.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
+        try c.encode(punctuationModes, forKey: .punctuationModes)
+        try c.encode(launchAtLogin, forKey: .launchAtLogin)
+        try c.encode(preferredListeningState, forKey: .preferredListeningState)
+        try c.encode(useInputMethod, forKey: .useInputMethod)
     }
 }
 

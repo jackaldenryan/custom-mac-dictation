@@ -3,7 +3,9 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-swift build --product CheckLogic --product CheckPhraseRules --product CheckFieldScenarios
+swift build --product CheckLogic
+swift build --product CheckPhraseRules
+swift build --product CheckFieldScenarios
 
 bin=".build/debug"
 out="$(mktemp -d)"

@@ -101,6 +101,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var lonePunctuationDelaySeconds: Double
     public var postProcessConfigs: [PostProcessConfig]
     public var activePostProcessID: String
+    public var useInputMethod: Bool
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
@@ -119,7 +120,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
             lonePunctuationDelaySeconds: defaultLonePunctuationDelaySeconds,
             postProcessConfigs: [.builtInDefault],
-            activePostProcessID: PostProcessConfig.defaultID
+            activePostProcessID: PostProcessConfig.defaultID,
+            useInputMethod: false
         )
     }
 
@@ -136,6 +138,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case lonePunctuationDelaySeconds
         case postProcessConfigs
         case activePostProcessID
+        case useInputMethod
     }
 
     public init(
@@ -150,7 +153,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keyRepeatDelaySeconds: Double,
         lonePunctuationDelaySeconds: Double,
         postProcessConfigs: [PostProcessConfig],
-        activePostProcessID: String
+        activePostProcessID: String,
+        useInputMethod: Bool = false
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphoneUID = microphoneUID
@@ -164,6 +168,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.lonePunctuationDelaySeconds = Self.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
         self.postProcessConfigs = postProcessConfigs
         self.activePostProcessID = activePostProcessID
+        self.useInputMethod = useInputMethod
         ensurePostProcessDefaults()
     }
 
@@ -193,6 +198,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         )
         postProcessConfigs = try container.decodeIfPresent([PostProcessConfig].self, forKey: .postProcessConfigs) ?? [.builtInDefault]
         activePostProcessID = try container.decodeIfPresent(String.self, forKey: .activePostProcessID) ?? PostProcessConfig.defaultID
+        useInputMethod = try container.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
         ensurePostProcessDefaults()
     }
 
@@ -210,6 +216,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(lonePunctuationDelaySeconds, forKey: .lonePunctuationDelaySeconds)
         try container.encode(postProcessConfigs, forKey: .postProcessConfigs)
         try container.encode(activePostProcessID, forKey: .activePostProcessID)
+        try container.encode(useInputMethod, forKey: .useInputMethod)
     }
 
     public var activePostProcessConfig: PostProcessConfig {
@@ -314,6 +321,7 @@ public final class SettingsStore: @unchecked Sendable {
             cached.punctuationModes = prefs.punctuationModes
             cached.launchAtLogin = prefs.launchAtLogin
             cached.preferredListeningState = prefs.preferredListeningState
+            cached.useInputMethod = prefs.useInputMethod
         }
     }
 

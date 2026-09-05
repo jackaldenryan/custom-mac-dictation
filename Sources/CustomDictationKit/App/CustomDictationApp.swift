@@ -26,7 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        DictationInputServer.start()
+        if AppRuntime.isLocalTest || SettingsStore.shared.settings.useInputMethod {
+            DictationInputServer.start()
+        }
         installMainMenu()
         if AppRuntime.isLocalTest {
             _ = Permissions.accessibilityGranted(prompt: true)
