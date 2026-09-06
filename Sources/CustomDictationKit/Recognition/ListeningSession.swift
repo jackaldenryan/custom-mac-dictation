@@ -63,6 +63,7 @@ public final class ListeningSession: ObservableObject {
         do {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
+            engine.disableForcedFinalize = settings.disableFinalizeDelay
             lastMicrophoneUID = settings.microphoneUID
             try await engine.start(
                 microphoneUID: settings.microphoneUID,
@@ -106,6 +107,10 @@ public final class ListeningSession: ObservableObject {
 
     public func setFinalizeDelay(_ seconds: Double) {
         engine.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(seconds)
+    }
+
+    public func setDisableForcedFinalize(_ off: Bool) {
+        engine.disableForcedFinalize = off
     }
 
     public func requestStart() async {

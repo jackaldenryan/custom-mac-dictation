@@ -166,8 +166,12 @@ public enum PostProcessor {
     nonisolated(unsafe) private static var cachedContext: JSContext?
     nonisolated(unsafe) public static var lastError = ""
 
-    public static func process(_ input: PostProcessInput, settings: AppSettings) -> String? {
-        let config = settings.activePostProcessConfig
+     public static func process(_ input: PostProcessInput, settings: AppSettings) -> String? {
+         if input.isPartial, settings.postProcessOnlyOnFinal {
+             lastError = ""
+             return input.text
+         }
+         let config = settings.activePostProcessConfig
         if config.isBuiltInDefault {
             lastError = ""
             return DefaultPostProcess.apply(input)

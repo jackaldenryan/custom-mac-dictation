@@ -118,6 +118,7 @@ private struct AppRootView: View {
             Group {
                 switch section {
                 case .listen: listenTab
+                case .playground: PlaygroundView(session: session)
                 case .vocabulary: vocabularyTab
                 case .commands: commandsTab
                 case .postProcess: postProcessTab
@@ -144,6 +145,11 @@ private struct AppRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: ConfigFolder.didChange)) { _ in
             store.reloadFromFolder()
             settings = store.settings
+        }
+        .onChange(of: section) { _, new in
+            if new != .playground {
+                PlaygroundTarget.shared.deactivate()
+            }
         }
     }
 
@@ -226,12 +232,14 @@ private struct AppRootView: View {
                     Toggle("Open at login", isOn: launchBinding)
                 }
                 Section("Finish a phrase after") {
+                    Toggle("Disable silence finalize", isOn: disableFinalizeBinding)
                     Picker("Silence", selection: finalizeMenuBinding) {
                         ForEach(0...20, id: \.self) { tenths in
                             Text(Self.finalizeMenuLabel(tenths: tenths)).tag(FinalizeMenu.tenths(tenths))
                         }
                         Text("Custom").tag(FinalizeMenu.custom)
                     }
+                    .disabled(settings.disableFinalizeDelay)
                     if finalizeMenu == .custom {
                         HStack {
                             TextField("Seconds", text: $customFinalizeText)
@@ -244,7 +252,7 @@ private struct AppRootView: View {
                                 .buttonStyle(.bordered)
                         }
                     }
-                    Text("How long to wait after you stop talking before the phrase is finished. Longer can keep Apple from adding a second period or question mark.")
+                    Text("On: wait for Apple’s final only. Off: after this silence we nudge Apple to finish the phrase (default 0.4s).")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -272,12 +280,14 @@ private struct AppRootView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Section("Spoken punctuation after a phrase") {
+                    Toggle("Disable punctuation delay", isOn: disableLonePunctBinding)
                     Picker("Pause", selection: lonePunctMenuBinding) {
                         ForEach([0, 5, 10, 15, 20, 30], id: \.self) { tenths in
                             Text(Self.finalizeMenuLabel(tenths: tenths)).tag(LonePunctMenu.tenths(tenths))
                         }
                         Text("Custom").tag(LonePunctMenu.custom)
                     }
+                    .disabled(settings.disableLonePunctuationDelay)
                     if lonePunctMenu == .custom {
                         HStack {
                             TextField("Seconds", text: $customLonePunctText)
@@ -290,7 +300,7 @@ private struct AppRootView: View {
                                 .buttonStyle(.bordered)
                         }
                     }
-                    Text("Spoken comma, period, or question mark right after a phrase is ignored during this pause. After it, saying comma or period types the character. Default is 1 second.")
+                    Text("On: comma, period, and question mark type immediately. Off: spoken punctuation right after a phrase is ignored during the pause (default 1 second).")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -306,7 +316,11 @@ private struct AppRootView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Post-process")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
-            Text("Runs only after a phrase is routed as typed text, not on commands. Default is the built-in rules. Duplicate it to experiment. function process(ctx) must return the string to type, or null to ignore.")
+            Text("Default runs on live guesses and on Apple’s final. Commands are never post-processed. Duplicate Default to edit. function process(ctx) must return the string to type, or null to ignore.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle("Post-process only after Apple’s final", isOn: postProcessOnlyOnFinalBinding)
+            Text("On: live text is Apple’s raw guess. Off: spacing and capitals apply while you speak.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
@@ -624,6 +638,7 @@ private struct AppRootView: View {
 
     private enum AppSection: String, CaseIterable, Hashable {
         case listen
+        case playground
         case vocabulary
         case commands
         case postProcess
@@ -633,6 +648,7 @@ private struct AppRootView: View {
         var title: String {
             switch self {
             case .listen: return "Listen"
+            case .playground: return "Playground"
             case .vocabulary: return "Vocabulary"
             case .commands: return "Commands"
             case .postProcess: return "Post-process"
@@ -644,6 +660,7 @@ private struct AppRootView: View {
         var icon: String {
             switch self {
             case .listen: return "mic.fill"
+            case .playground: return "square.and.pencil"
             case .vocabulary: return "text.book.closed"
             case .commands: return "command"
             case .postProcess: return "function"
@@ -756,6 +773,36 @@ private struct AppRootView: View {
         )
     }
 
+    private var disableFinalizeBinding: Binding<Bool> {
+        Binding(
+            get: { settings.disableFinalizeDelay },
+            set: { on in
+                settings.disableFinalizeDelay = on
+                persist()
+            }
+        )
+    }
+
+    private var disableLonePunctBinding: Binding<Bool> {
+        Binding(
+            get: { settings.disableLonePunctuationDelay },
+            set: { on in
+                settings.disableLonePunctuationDelay = on
+                persist()
+            }
+        )
+    }
+
+    private var postProcessOnlyOnFinalBinding: Binding<Bool> {
+        Binding(
+            get: { settings.postProcessOnlyOnFinal },
+            set: { on in
+                settings.postProcessOnlyOnFinal = on
+                persist()
+            }
+        )
+    }
+
     private var launchBinding: Binding<Bool> {
         Binding(
             get: { settings.launchAtLogin },
@@ -844,6 +891,7 @@ private struct AppRootView: View {
         _ = store.update { $0 = settings }
         settings = store.settings
         session.setFinalizeDelay(settings.finalizeDelaySeconds)
+        session.setDisableForcedFinalize(settings.disableFinalizeDelay)
     }
 
     private func applyFinalizeDelay(_ seconds: Double) {

@@ -28,6 +28,7 @@ public final class SpeechEngine: @unchecked Sendable {
     private var lastMicrophoneUID: String?
     private var lastVocabSignature = ""
     public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
+    public var disableForcedFinalize = false
     public var isRunning: Bool { capture != nil }
 
     public init() {}
@@ -176,7 +177,7 @@ public final class SpeechEngine: @unchecked Sendable {
         finalizeTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                guard let self, self.pendingFinalize else { continue }
+                guard let self, self.pendingFinalize, !self.disableForcedFinalize else { continue }
                 if Date().timeIntervalSince(self.lastVolatileAt) >= self.finalizeDelaySeconds {
                     await self.finalizeThroughLatest()
                 }

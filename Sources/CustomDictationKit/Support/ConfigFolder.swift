@@ -270,8 +270,10 @@ public enum ConfigFolder {
     {
       "finalizeDelaySeconds": 0.4,
       "keyRepeatDelaySeconds": 0.08,
-      "lonePunctuationDelaySeconds": 1.0
-    }
+       "lonePunctuationDelaySeconds": 1.0,
+       "disableLonePunctuationDelay": false,
+       "disableFinalizeDelay": false
+     }
     ```
 
     ## post-process.json
@@ -345,51 +347,86 @@ public enum ConfigFolder {
 public struct DelaySettings: Codable, Equatable, Sendable {
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
-    public var lonePunctuationDelaySeconds: Double
+     public var lonePunctuationDelaySeconds: Double
+     public var disableLonePunctuationDelay: Bool
+     public var disableFinalizeDelay: Bool
 
-    public init(finalizeDelaySeconds: Double, keyRepeatDelaySeconds: Double, lonePunctuationDelaySeconds: Double) {
-        self.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(finalizeDelaySeconds)
-        self.keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
-        self.lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
-    }
+     public init(
+         finalizeDelaySeconds: Double,
+         keyRepeatDelaySeconds: Double,
+         lonePunctuationDelaySeconds: Double,
+         disableLonePunctuationDelay: Bool = false,
+         disableFinalizeDelay: Bool = false
+     ) {
+         self.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(finalizeDelaySeconds)
+         self.keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
+         self.lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
+         self.disableLonePunctuationDelay = disableLonePunctuationDelay
+         self.disableFinalizeDelay = disableFinalizeDelay
+     }
 
-    public init(_ settings: AppSettings) {
-        self.init(
-            finalizeDelaySeconds: settings.finalizeDelaySeconds,
-            keyRepeatDelaySeconds: settings.keyRepeatDelaySeconds,
-            lonePunctuationDelaySeconds: settings.lonePunctuationDelaySeconds
-        )
-    }
+     public init(_ settings: AppSettings) {
+         self.init(
+             finalizeDelaySeconds: settings.finalizeDelaySeconds,
+             keyRepeatDelaySeconds: settings.keyRepeatDelaySeconds,
+             lonePunctuationDelaySeconds: settings.lonePunctuationDelaySeconds,
+             disableLonePunctuationDelay: settings.disableLonePunctuationDelay,
+             disableFinalizeDelay: settings.disableFinalizeDelay
+         )
+     }
 
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(
-            try c.decodeIfPresent(Double.self, forKey: .finalizeDelaySeconds) ?? AppSettings.defaultFinalizeDelaySeconds
-        )
-        keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(
-            try c.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? AppSettings.defaultKeyRepeatDelaySeconds
-        )
-        lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(
-            try c.decodeIfPresent(Double.self, forKey: .lonePunctuationDelaySeconds) ?? AppSettings.defaultLonePunctuationDelaySeconds
-        )
-    }
-}
+     public init(from decoder: Decoder) throws {
+         let c = try decoder.container(keyedBy: CodingKeys.self)
+         finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(
+             try c.decodeIfPresent(Double.self, forKey: .finalizeDelaySeconds) ?? AppSettings.defaultFinalizeDelaySeconds
+         )
+         keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(
+             try c.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? AppSettings.defaultKeyRepeatDelaySeconds
+         )
+         lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(
+             try c.decodeIfPresent(Double.self, forKey: .lonePunctuationDelaySeconds) ?? AppSettings.defaultLonePunctuationDelaySeconds
+         )
+         disableLonePunctuationDelay = try c.decodeIfPresent(Bool.self, forKey: .disableLonePunctuationDelay) ?? false
+         disableFinalizeDelay = try c.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
+     }
+ }
 
 public struct PrefsSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
     public var microphoneUID: String?
     public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
-    public var preferredListeningState: ListeningState
+     public var preferredListeningState: ListeningState
+     public var postProcessOnlyOnFinal: Bool
 
-    public init(_ settings: AppSettings) {
-        hasCompletedOnboarding = settings.hasCompletedOnboarding
-        microphoneUID = settings.microphoneUID
-        punctuationModes = settings.punctuationModes
-        launchAtLogin = settings.launchAtLogin
-        preferredListeningState = settings.preferredListeningState
-    }
-}
+     public init(_ settings: AppSettings) {
+         hasCompletedOnboarding = settings.hasCompletedOnboarding
+         microphoneUID = settings.microphoneUID
+         punctuationModes = settings.punctuationModes
+         launchAtLogin = settings.launchAtLogin
+         preferredListeningState = settings.preferredListeningState
+         postProcessOnlyOnFinal = settings.postProcessOnlyOnFinal
+     }
+
+     enum CodingKeys: String, CodingKey {
+         case hasCompletedOnboarding
+         case microphoneUID
+         case punctuationModes
+         case launchAtLogin
+         case preferredListeningState
+         case postProcessOnlyOnFinal
+     }
+
+     public init(from decoder: Decoder) throws {
+         let c = try decoder.container(keyedBy: CodingKeys.self)
+         hasCompletedOnboarding = try c.decode(Bool.self, forKey: .hasCompletedOnboarding)
+         microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID)
+         punctuationModes = try c.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
+         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
+         preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
+         postProcessOnlyOnFinal = try c.decodeIfPresent(Bool.self, forKey: .postProcessOnlyOnFinal) ?? false
+     }
+ }
 
 struct PostProcessFile: Codable, Equatable, Sendable {
     var activeID: String

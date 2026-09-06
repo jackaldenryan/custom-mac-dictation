@@ -9,12 +9,15 @@ public enum LivePhrase {
 
     public static func show(_ text: String) {
         guard let out = shaped(text, isPartial: true) else { return }
-        apply(out)
+        apply(out, isPartial: true)
     }
 
     public static func commit(_ text: String) {
         guard let out = shaped(text, isPartial: false) else { return }
-        apply(out)
+        apply(out, isPartial: false)
+        if PlaygroundTarget.shared.isActive {
+            PlaygroundTarget.shared.collapseLive()
+        }
         if !displayed.isEmpty { pendingLeadSpace = true }
         displayed = ""
         lastTypedAt = Date()
@@ -45,7 +48,7 @@ public enum LivePhrase {
             isPartial: isPartial,
             pendingLeadSpace: pendingLeadSpace,
             lastTypedAge: Date().timeIntervalSince(lastTypedAt),
-            lonePunctuationDelay: SettingsStore.shared.settings.lonePunctuationDelaySeconds,
+            lonePunctuationDelay: SettingsStore.shared.settings.effectiveLonePunctuationDelay,
             isLonePunctuation: TranscriptNormalizer.isLonePunctuation(text),
             midSentence: phraseIsMidSentence,
             snapshot: phraseSnapshot
@@ -53,8 +56,17 @@ public enum LivePhrase {
         return PostProcessor.process(input, settings: SettingsStore.shared.settings)
     }
 
-    private static func apply(_ text: String) {
+    private static func apply(_ text: String, isPartial: Bool = true) {
         if displayed == text { return }
+        if PlaygroundTarget.shared.isActive {
+            _ = PlaygroundTarget.shared.apply(
+                shaped: text,
+                keepSelected: isPartial && !text.isEmpty,
+                isPartial: isPartial
+            )
+            displayed = text
+            return
+        }
         if keepsTrailingPunctuation(displayed: displayed, incoming: text) {
             return
         }
