@@ -69,3 +69,32 @@ public enum PhrasePathLock {
         phrasePath != .hid
     }
 }
+
+/// Whether dictated keystrokes may be sent to the focused element.
+///
+/// Why: a native (AppKit) app beeps for every keystroke that no text field
+/// takes. Dictating with a Zoom meeting window in front typed each word as
+/// keystrokes into the meeting view, so every phrase made a string of alert
+/// "boop"s (Oct 3 log: "Typed 4 utf16 into Zoom" during meetings). Finder
+/// and the Notes sidebar were special-cased before; this is the general rule.
+///
+/// Web engines (Chrome, Slack, Cursor, any page) are left alone: they never
+/// beep for unhandled keys, and their AX focus can lag a click into a field.
+/// If AX can't see a focused element at all, typing goes ahead as before.
+public enum KeystrokePolicy {
+    static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+    /// Typing here starts editing (spreadsheet cells).
+    static let typeToEditRoles: Set<String> = ["AXCell", "AXTable", "AXGrid"]
+
+    public static func allowsTyping(
+        isWebEngine: Bool,
+        focusedRole: String?,
+        hasTextSelectionRange: Bool,
+        hasInsertionPoint: Bool
+    ) -> Bool {
+        if isWebEngine { return true }
+        guard let role = focusedRole else { return true }
+        if textRoles.contains(role) || typeToEditRoles.contains(role) { return true }
+        return hasTextSelectionRange || hasInsertionPoint
+    }
+}

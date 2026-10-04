@@ -160,8 +160,7 @@ public enum LivePhrase {
                 return
             }
         }
-        guard hidFallbackAllowed() else {
-            DiagnosticLog.line("Live phrase skipped; front app has nowhere to type")
+        guard !displayed.isEmpty || hidFallbackAllowed() else {
             lastInsertPath = .skipped
             displayed = ""
             return
@@ -172,15 +171,17 @@ public enum LivePhrase {
         displayed = text
     }
 
-    /// HID fallback must not type where no text can land. Browsers and
-    /// Electron apps need HID (their fields are often invisible to AX), but
-    /// Finder has no insertion point at all and the Notes sidebar is not a
-    /// text field, so dictating there renames files or mangles the sidebar.
+    /// HID typing must not go where no text can land: native apps beep for
+    /// every keystroke nothing takes (Zoom meeting window), and Finder or the
+    /// Notes sidebar act on typed letters. KeystrokePolicy decides from AX
+    /// focus, once per phrase (a phrase already typing keeps typing).
     private static func hidFallbackAllowed() -> Bool {
-        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        if front == "com.apple.finder" { return false }
-        if front == "com.apple.Notes", FieldEditor.focusedElementIsPresentButNotEditable() { return false }
-        return true
+        let target = FieldEditor.focusedTakesKeystrokes()
+        if !target.allowed {
+            let app = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
+            DiagnosticLog.line("Live phrase skipped; focus in \(app) is \(target.role), not a text field (keystrokes would beep)")
+        }
+        return target.allowed
     }
 
     private static func hidReplace(_ text: String) {

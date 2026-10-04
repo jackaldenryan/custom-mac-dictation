@@ -618,4 +618,28 @@ do {
     expect(session.contains("Router.isEarlyCommand") && session.contains("EarlyCommand.resolveFinal"), "session runs commands early and skips their final")
 }
 
+// Dictating with a Zoom meeting window in front made a "boop" for every
+// word (Oct 3): HID keystrokes went to a native view that takes no text,
+// and AppKit beeps for each unhandled key. Native apps now get keystrokes
+// only when AX focus can take text; web engines (which never beep) and
+// unknown focus keep typing as before.
+do {
+    func ok(_ web: Bool, _ role: String?, range: Bool = false, ip: Bool = false) -> Bool {
+        KeystrokePolicy.allowsTyping(isWebEngine: web, focusedRole: role, hasTextSelectionRange: range, hasInsertionPoint: ip)
+    }
+    expect(!ok(false, "AXWindow"), "Zoom meeting window: no keystrokes, no beeps")
+    expect(!ok(false, "AXGroup"), "native group view: no keystrokes")
+    expect(!ok(false, "AXButton"), "focused button: no keystrokes")
+    expect(ok(false, "AXTextArea"), "Zoom chat box still gets dictation")
+    expect(!ok(false, "AXOutline"), "Finder list / Notes sidebar skipped")
+    expect(ok(false, "AXTextField"), "Finder rename field takes dictation")
+    expect(ok(false, "AXCell"), "spreadsheet cell: typing starts editing")
+    expect(ok(false, "AXGroup", ip: true), "custom text view with an insertion point (terminals)")
+    expect(ok(false, "AXGroup", range: true), "custom text view with a text selection range")
+    expect(ok(true, "AXGroup"), "web engines never beep: unchanged")
+    expect(ok(false, nil), "AX can't see focus: unchanged")
+    expect(liveSource.contains("FieldEditor.focusedTakesKeystrokes()"), "HID typing checks the focus first")
+    expect(!liveSource.contains("com.apple.finder"), "Finder special case replaced by the general rule")
+}
+
 print("CheckLogic passed")

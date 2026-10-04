@@ -86,19 +86,25 @@ public enum FieldEditor {
         return isStub(el)
     }
 
-    /// True when AX can see the focused element but it is not an editable
-    /// text field (e.g. the Notes sidebar). Browsers with an invisible-to-AX
-    /// search box return false here (no element at all), so HID fallback
-    /// still types there.
-    public static func focusedElementIsPresentButNotEditable() -> Bool {
-        guard let el = focusedElement() else { return false }
-        if isStub(el) { return false }
-        return !canEditText(el)
-    }
-
-    public static func hasSelection() -> Bool {
-        if let selected = selectedString(), !selected.isEmpty { return true }
-        return elementWithSelection() != nil
+    /// Whether dictated keystrokes would land in something that takes text
+    /// (see KeystrokePolicy), plus the focused role for the log.
+    public static func focusedTakesKeystrokes() -> (allowed: Bool, role: String) {
+        guard let el = focusedElement() else { return (true, "none") }
+        let role = stringValue(el, kAXRoleAttribute as CFString)
+        let app = owningApp(el)
+        let webEngine = isWebEngineApp(app)
+            || AXWritePolicy.webEngineBundleIDs.contains(app?.bundleIdentifier ?? "")
+            || isInsideWebArea(el)
+        var names: CFArray?
+        AXUIElementCopyAttributeNames(el, &names)
+        let attributes = (names as? [String]) ?? []
+        let allowed = KeystrokePolicy.allowsTyping(
+            isWebEngine: webEngine,
+            focusedRole: role,
+            hasTextSelectionRange: selectedRange(el) != nil,
+            hasInsertionPoint: attributes.contains(kAXInsertionPointLineNumberAttribute as String)
+        )
+        return (allowed, role ?? "unknown")
     }
 
     private static func firstSelectedText(from start: AXUIElement?) -> String? {
