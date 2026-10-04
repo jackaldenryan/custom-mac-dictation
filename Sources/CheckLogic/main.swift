@@ -541,4 +541,31 @@ do {
     expect(folder.contains("removeItem(at: legacyPostProcessURL)"), "stale post-process.json is cleaned up")
 }
 
+// "command click" on a link opens it in a new tab (Oct 3: it didn't in
+// Chrome). The System Events click it used is an Accessibility press, so the
+// held Command never reached the page. Now: link URL from AX, opened by the
+// browser in a new background tab.
+do {
+    typealias N = LinkOpener.Node
+    expect(LinkOpener.linkURL(in: [N(role: "AXStaticText", url: nil), N(role: "AXLink", url: "https://example.com/a"), N(role: "AXWebArea", url: "https://example.com")])
+           == "https://example.com/a", "link found by walking up from the text under the pointer")
+    expect(LinkOpener.linkURL(in: [N(role: "AXButton", url: nil), N(role: "AXWebArea", url: "https://example.com"), N(role: "AXLink", url: "https://x.com")]) == nil,
+           "nothing above the web area counts (browser chrome)")
+    expect(LinkOpener.linkURL(in: [N(role: "AXLink", url: "javascript:void(0)")]) == nil, "script links fall back to a real click")
+    expect(LinkOpener.family(bundleID: "com.google.Chrome") == .chromium, "Chrome uses the Chromium script")
+    expect(LinkOpener.family(bundleID: "com.apple.Safari") == .safari, "Safari script")
+    expect(LinkOpener.family(bundleID: "com.apple.finder") == nil, "Finder command click stays a click")
+    let chrome = LinkOpener.script(for: .chromium, bundleID: "com.google.Chrome", url: "https://example.com/?q=\"x\"")
+    expect(chrome.contains("make new tab at end of tabs of w"), "Chrome opens a new tab")
+    expect(chrome.contains("set active tab index of w to i"), "Chrome keeps the current tab in front, like Command-click")
+    expect(chrome.contains(#"q=\"x\""#), "URL quotes escaped for AppleScript")
+    let typist = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/Typist.swift"), encoding: .utf8)
+    expect(typist.contains("LinkOpener.openLinkUnderPointerInNewTab"), "command click tries the link path first")
+    expect(ClickGrammar.parse("command click mouse")?.flags == .maskCommand, "command click mouse")
+    expect(ClickGrammar.parse("right click mouse")?.right == true, "right click mouse")
+    expect(ClickGrammar.parse("click mouse") == nil, "plain click mouse is the exact command, not grammar")
+    expect(CommandSpec.builtIns.contains { $0.action == .click && $0.phrases.contains("click mouse") && ($0.clickTimes ?? 1) == 1 },
+           "\"click mouse\" clicks")
+}
+
 print("CheckLogic passed")

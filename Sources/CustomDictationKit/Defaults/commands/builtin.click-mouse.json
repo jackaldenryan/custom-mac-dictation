@@ -1,0 +1,15 @@
+{
+  "action": "click",
+  "builtin": true,
+  "clickButton": "left",
+  "clickTimes": 1,
+  "enabled": true,
+  "id": "builtin.click-mouse",
+  "match": "exact",
+  "phrases": [
+    "click mouse",
+    "mouse click"
+  ],
+  "priority": 186,
+  "when": "listening"
+}

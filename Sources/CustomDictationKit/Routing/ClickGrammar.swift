@@ -27,7 +27,7 @@ public enum ClickGrammar {
             case "triple": times = 3
             case "right": right = true
             case "left": right = false
-            case "click": continue
+            case "click", "mouse": continue
             default: leftover.append(token)
             }
         }

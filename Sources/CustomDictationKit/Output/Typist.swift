@@ -97,6 +97,9 @@ public enum Typist {
             return
         }
         let repeats = min(75, max(1, times))
+        if flags == .maskCommand, !right, repeats == 1, LinkOpener.openLinkUnderPointerInNewTab(at: cgMouseLocation()) {
+            return
+        }
         if !flags.isEmpty, systemEventsClick(flags: flags, right: right, times: repeats) {
             DiagnosticLog.line("System Events clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
             return
