@@ -92,9 +92,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
      public var disableFinalizeDelay: Bool
-     public var postProcessOnlyOnFinal: Bool
-     public var postProcessConfigs: [PostProcessConfig]
-    public var activePostProcessID: String
     public var useInputMethod: Bool
     /// Apple's automatic punctuation. Off: marks only from spoken
     /// punctuation ("period", "comma"), no guesses at pauses.
@@ -114,9 +111,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
             finalizeDelaySeconds: defaultFinalizeDelaySeconds,
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
              disableFinalizeDelay: false,
-             postProcessOnlyOnFinal: false,
-             postProcessConfigs: [.builtInDefault],
-            activePostProcessID: PostProcessConfig.defaultID,
             useInputMethod: false,
             appleAutoPunctuation: false
         )
@@ -132,9 +126,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case finalizeDelaySeconds
         case keyRepeatDelaySeconds
          case disableFinalizeDelay
-         case postProcessOnlyOnFinal
-         case postProcessConfigs
-        case activePostProcessID
         case useInputMethod
         case appleAutoPunctuation
     }
@@ -149,9 +140,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
          disableFinalizeDelay: Bool = false,
-         postProcessOnlyOnFinal: Bool = false,
-         postProcessConfigs: [PostProcessConfig],
-        activePostProcessID: String,
         useInputMethod: Bool = false,
         appleAutoPunctuation: Bool = false
     ) {
@@ -164,12 +152,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
          self.disableFinalizeDelay = disableFinalizeDelay
-         self.postProcessOnlyOnFinal = postProcessOnlyOnFinal
-         self.postProcessConfigs = postProcessConfigs
-        self.activePostProcessID = activePostProcessID
         self.useInputMethod = useInputMethod
         self.appleAutoPunctuation = appleAutoPunctuation
-        ensurePostProcessDefaults()
     }
 
     public init(from decoder: Decoder) throws {
@@ -193,12 +177,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try container.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? Self.defaultKeyRepeatDelaySeconds
         )
          disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
-         postProcessOnlyOnFinal = try container.decodeIfPresent(Bool.self, forKey: .postProcessOnlyOnFinal) ?? false
-         postProcessConfigs = try container.decodeIfPresent([PostProcessConfig].self, forKey: .postProcessConfigs) ?? [.builtInDefault]
-        activePostProcessID = try container.decodeIfPresent(String.self, forKey: .activePostProcessID) ?? PostProcessConfig.defaultID
         useInputMethod = try container.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
         appleAutoPunctuation = try container.decodeIfPresent(Bool.self, forKey: .appleAutoPunctuation) ?? false
-        ensurePostProcessDefaults()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -212,27 +192,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
         try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
          try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
-         try container.encode(postProcessOnlyOnFinal, forKey: .postProcessOnlyOnFinal)
-         try container.encode(postProcessConfigs, forKey: .postProcessConfigs)
-        try container.encode(activePostProcessID, forKey: .activePostProcessID)
         try container.encode(useInputMethod, forKey: .useInputMethod)
         try container.encode(appleAutoPunctuation, forKey: .appleAutoPunctuation)
-    }
-
-    public var activePostProcessConfig: PostProcessConfig {
-        postProcessConfigs.first { $0.id == activePostProcessID } ?? .builtInDefault
-    }
-
-    public mutating func ensurePostProcessDefaults() {
-        if !postProcessConfigs.contains(where: { $0.id == PostProcessConfig.defaultID }) {
-            postProcessConfigs.insert(.builtInDefault, at: 0)
-        }
-        if postProcessConfigs.isEmpty {
-            postProcessConfigs = [.builtInDefault]
-        }
-        if !postProcessConfigs.contains(where: { $0.id == activePostProcessID }) {
-            activePostProcessID = PostProcessConfig.defaultID
-        }
     }
 
     public static func clampedFinalizeDelay(_ seconds: Double) -> Double {
@@ -298,18 +259,12 @@ public final class SettingsStore: @unchecked Sendable {
             cached.keyRepeatDelaySeconds = delays.keyRepeatDelaySeconds
             cached.disableFinalizeDelay = delays.disableFinalizeDelay
         }
-        if let post = ConfigFolder.loadPostProcess() {
-            cached.activePostProcessID = post.activeID
-            cached.postProcessConfigs = post.configs
-            cached.ensurePostProcessDefaults()
-        }
         if let prefs = ConfigFolder.loadPrefs() {
             cached.hasCompletedOnboarding = prefs.hasCompletedOnboarding
             cached.microphoneUID = prefs.microphoneUID
             cached.launchAtLogin = prefs.launchAtLogin
             cached.preferredListeningState = prefs.preferredListeningState
              cached.useInputMethod = prefs.useInputMethod
-             cached.postProcessOnlyOnFinal = prefs.postProcessOnlyOnFinal
              cached.appleAutoPunctuation = prefs.appleAutoPunctuation
          }
      }
@@ -331,9 +286,6 @@ public final class SettingsStore: @unchecked Sendable {
             }
             if DelaySettings(previous) != DelaySettings(cached) {
                 ConfigFolder.writeDelays(DelaySettings(cached))
-            }
-            if previous.postProcessConfigs != cached.postProcessConfigs || previous.activePostProcessID != cached.activePostProcessID {
-                ConfigFolder.writePostProcess(activeID: cached.activePostProcessID, configs: cached.postProcessConfigs)
             }
             if PrefsSettings(previous) != PrefsSettings(cached) {
                 ConfigFolder.writePrefs(PrefsSettings(cached))

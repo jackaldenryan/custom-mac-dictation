@@ -86,7 +86,7 @@ final class Doc {
 
     var p: BoxProfile { profile(box) }
 
-    func shape(_ transcript: String, partial: Bool) -> String? {
+    func shape(_ transcript: String) -> String? {
         PhraseSimulation.typed(
             into: text,
             at: loc,
@@ -173,7 +173,7 @@ final class Doc {
         markStart = loc
         let steps = partials + [final]
         for (i, raw) in steps.enumerated() {
-            guard let out = shape(raw, partial: i < partials.count) else { continue }
+            guard let out = shape(raw) else { continue }
             axReplaceMark(with: out, select: i < partials.count && !out.isEmpty)
             if i < partials.count { liveVisible = true }
             displayed = out
@@ -190,7 +190,7 @@ final class Doc {
         displayed = ""
         let steps = partials + [final]
         for (i, raw) in steps.enumerated() {
-            guard let out = shape(raw, partial: i < partials.count) else { continue }
+            guard let out = shape(raw) else { continue }
             if displayed == out { continue }
             if keepsTrailingPunctuation(displayed: displayed, incoming: out) { continue }
             if displayed.isEmpty {

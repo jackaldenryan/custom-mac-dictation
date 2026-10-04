@@ -26,7 +26,7 @@ Slack, Cursor, VS Code, OpenCode, Chrome, Safari pages and any Electron/Chromium
 
 Setting `appleAutoPunctuation` (Listen → Punctuation, `settings.json` in the config folder). Off removes `.punctuation` from the DictationTranscriber options (`Recognition/TranscriberOptions.swift`): no marks guessed from pauses, spoken "period" / "comma" / "question mark" / "exclamation point" still convert. Check real-model behavior with `./scripts/probe-punctuation.sh` (speaks samples with `say`, transcribes each with it on and off via `swift run ProbeSpeech`).
 
-Because every mark is now spoken, the app types every mark it gets. Removed (Oct 3, rollback tag `snapshot-auto-punct-off-before-cleanup`) because they only existed to undo Apple's guesses: dropping repeated boundary punctuation, the lone-punctuation pause setting, and stripping a trailing ". ? ..." when inserting mid-sentence. Kept: lowering Apple's segment-start capital mid-sentence (Apple still capitalizes each segment).
+Because every mark is now spoken, the app types every mark it gets. Removed in 0.1.40 because they only existed to undo Apple's guesses: dropping repeated boundary punctuation, the lone-punctuation pause setting, and stripping a trailing ". ? ..." when inserting mid-sentence. Kept: lowering Apple's segment-start capital mid-sentence (Apple still capitalizes each segment).
 
 ## Phrase / post-process rules
 

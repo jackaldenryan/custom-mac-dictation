@@ -25,7 +25,8 @@ public enum ConfigFolder {
         root.appendingPathComponent("delays.json")
     }
 
-    public static var postProcessURL: URL {
+    /// Removed in 0.1.40 (post-process is built in, not configurable).
+    static var legacyPostProcessURL: URL {
         root.appendingPathComponent("post-process.json")
     }
 
@@ -133,9 +134,7 @@ public enum ConfigFolder {
         if !FileManager.default.fileExists(atPath: delaysURL.path) {
             writeDelays(DelaySettings(settings))
         }
-        if !FileManager.default.fileExists(atPath: postProcessURL.path) {
-            writePostProcess(activeID: settings.activePostProcessID, configs: settings.postProcessConfigs)
-        }
+        try? FileManager.default.removeItem(at: legacyPostProcessURL)
         if !FileManager.default.fileExists(atPath: prefsURL.path) {
             writePrefs(PrefsSettings(settings))
         }
@@ -149,18 +148,6 @@ public enum ConfigFolder {
     public static func writeDelays(_ delays: DelaySettings) {
         ignoreWatcherUntil = Date().addingTimeInterval(0.4)
         try? writeJSON(delays, to: delaysURL)
-    }
-
-    public static func loadPostProcess() -> (activeID: String, configs: [PostProcessConfig])? {
-        guard let data = try? Data(contentsOf: postProcessURL),
-              let file = try? JSONDecoder().decode(PostProcessFile.self, from: data)
-        else { return nil }
-        return (file.activeID, file.configs)
-    }
-
-    public static func writePostProcess(activeID: String, configs: [PostProcessConfig]) {
-        ignoreWatcherUntil = Date().addingTimeInterval(0.4)
-        try? writeJSON(PostProcessFile(activeID: activeID, configs: configs), to: postProcessURL)
     }
 
     public static func loadPrefs() -> PrefsSettings? {
@@ -256,7 +243,7 @@ public enum ConfigFolder {
     private static let readmeText = """
     # Custom Dictation config
 
-    This folder is the source of truth for commands, vocabulary, delays, post-process, and other settings.
+    This folder is the source of truth for commands, vocabulary, delays, and other settings.
 
      Path: `~/.custom-dictation-config` (local test builds use `~/.custom-dictation-config-local`)
 
@@ -271,23 +258,6 @@ public enum ConfigFolder {
       "finalizeDelaySeconds": 0.4,
       "keyRepeatDelaySeconds": 0.08,
       "disableFinalizeDelay": false
-    }
-    ```
-
-    ## post-process.json
-
-    Named JavaScript configs. `function process(ctx)` returns the string to type, or null to ignore.
-
-    ```json
-    {
-      "activeID": "default",
-      "configs": [
-        {
-          "id": "default",
-          "name": "Default",
-          "script": "function process(ctx) { return ctx.text; }"
-        }
-      ]
     }
     ```
 
@@ -383,7 +353,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
      public var useInputMethod: Bool
-     public var postProcessOnlyOnFinal: Bool
      public var appleAutoPunctuation: Bool
 
      public init(_ settings: AppSettings) {
@@ -392,7 +361,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          launchAtLogin = settings.launchAtLogin
          preferredListeningState = settings.preferredListeningState
          useInputMethod = settings.useInputMethod
-         postProcessOnlyOnFinal = settings.postProcessOnlyOnFinal
          appleAutoPunctuation = settings.appleAutoPunctuation
      }
 
@@ -402,7 +370,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          case launchAtLogin
          case preferredListeningState
          case useInputMethod
-         case postProcessOnlyOnFinal
          case appleAutoPunctuation
      }
 
@@ -413,7 +380,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
          preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
          useInputMethod = try c.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
-         postProcessOnlyOnFinal = try c.decodeIfPresent(Bool.self, forKey: .postProcessOnlyOnFinal) ?? false
          appleAutoPunctuation = try c.decodeIfPresent(Bool.self, forKey: .appleAutoPunctuation) ?? false
      }
 
@@ -424,12 +390,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          try c.encode(launchAtLogin, forKey: .launchAtLogin)
          try c.encode(preferredListeningState, forKey: .preferredListeningState)
          try c.encode(useInputMethod, forKey: .useInputMethod)
-         try c.encode(postProcessOnlyOnFinal, forKey: .postProcessOnlyOnFinal)
          try c.encode(appleAutoPunctuation, forKey: .appleAutoPunctuation)
      }
  }
-
-struct PostProcessFile: Codable, Equatable, Sendable {
-    var activeID: String
-    var configs: [PostProcessConfig]
-}

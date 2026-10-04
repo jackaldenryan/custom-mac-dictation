@@ -18,14 +18,12 @@ func check(_ name: String, _ got: String?, _ want: String?) {
 func typed(
     _ field: String,
     _ transcript: String,
-    pending: Bool = false,
-    partial: Bool = false
+    pending: Bool = false
 ) -> String? {
     PhraseSimulation.typed(
         into: field,
         transcript: transcript,
-        pendingLeadSpace: pending,
-        isPartial: partial
+        pendingLeadSpace: pending
     )
 }
 
@@ -107,44 +105,8 @@ check("first word of empty is capital", typed("", "the"), "The")
 check("mid keep all-caps two letters", typed("code ", "ID"), "ID")
 check("after closing brace space", typed("hello}", "there"), " there")
 check("after em dash space", typed("wait—", "hello"), " hello")
-do {
-    let js = try PhraseSimulation.typedJavaScript(into: "Really?", transcript: "?")
-    check("js matches swift second question mark", js, typed("Really?", "?"))
-    let mid = try PhraseSimulation.typedJavaScript(into: "working ", transcript: "Hello.")
-    check("js matches swift spoken period mid-sentence", mid, typed("working ", "Hello."))
-} catch {
-    check("js spoken punctuation", error.localizedDescription, nil)
-}
 
-do {
-    let js = try PhraseSimulation.typedJavaScript(into: "working ", transcript: "In")
-    check("js matches swift mid-sentence", js, PhraseSimulation.typed(into: "working ", transcript: "In"))
-} catch {
-    check("js mid-sentence", error.localizedDescription, nil)
-}
-
-check("partial matches final empty hello", typed("", "hello", partial: true), typed("", "hello"))
-check("partial matches final mid-sentence", typed("working ", "In the lab", partial: true), typed("working ", "In the lab"))
-check("partial spoken period types", typed("Hi", ".", partial: true), ".")
-check("partial keeps capital at start", typed("", "Hello", partial: true), "Hello")
-check("partial keeps spoken period mid-sentence", typed("working ", "Hello.", partial: true), "hello.")
-do {
-    let js = try PhraseSimulation.typedJavaScript(into: "working ", transcript: "In the lab", isPartial: true)
-    check("js partial matches swift", js, typed("working ", "In the lab", partial: true))
-} catch {
-     check("js partial", error.localizedDescription, nil)
- }
-
- do {
-     var settings = AppSettings.default
-     settings.postProcessOnlyOnFinal = true
-     let live = PhraseSimulation.input(into: "working", transcript: "In the lab", isPartial: true)
-     check("live skip post-process when only-on-final", PostProcessor.process(live, settings: settings), "In the lab")
-     let fin = PhraseSimulation.input(into: "working", transcript: "In the lab", isPartial: false)
-     check("final still post-process when only-on-final", PostProcessor.process(fin, settings: settings), " in the lab")
- }
-
- if Checks.failures > 0 {
+if Checks.failures > 0 {
     fputs("CheckPhraseRules: \(Checks.failures) failed\n", stderr)
     exit(1)
 }

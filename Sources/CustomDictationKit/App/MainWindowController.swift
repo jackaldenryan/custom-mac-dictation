@@ -93,9 +93,6 @@ private struct AppRootView: View {
     @State private var finalizeUsesCustom = false
     @State private var customKeyRepeatText = ""
     @State private var keyRepeatUsesCustom = false
-    @State private var postProcessName = PostProcessConfig.builtInDefault.name
-    @State private var postProcessScript = PostProcessConfig.builtInDefault.script
-    @State private var postProcessMessage = ""
     @State private var section: AppSection = .listen
     @State private var vocabSearch = ""
     @State private var commandSearch = ""
@@ -129,7 +126,6 @@ private struct AppRootView: View {
                 case .playground: PlaygroundView(session: session, target: .shared)
                 case .vocabulary: vocabularyTab
                 case .commands: commandsTab
-                case .postProcess: postProcessTab
                 case .updates: updatesTab
                 case .diagnostics: diagnosticsTab
                 }
@@ -146,7 +142,6 @@ private struct AppRootView: View {
             mics = AudioCapture.listMicrophones()
             logText = DiagnosticLog.tail()
             accessibilityTrusted = AXIsProcessTrusted()
-            loadPostProcessDraft()
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             accessibilityTrusted = AXIsProcessTrusted()
@@ -313,57 +308,6 @@ private struct AppRootView: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-    }
-
-    private var postProcessTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Post-process")
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-             Text("Default runs on live guesses and on Apple’s final. Commands are never post-processed. Duplicate Default to edit. function process(ctx) must return the string to type, or null to ignore.")
-                 .foregroundStyle(.secondary)
-                 .fixedSize(horizontal: false, vertical: true)
-             Toggle("Post-process only after Apple’s final", isOn: postProcessOnlyOnFinalBinding)
-             Text("On: live text is Apple’s raw guess. Off: spacing and capitals apply while you speak.")
-                 .foregroundStyle(.secondary)
-                 .fixedSize(horizontal: false, vertical: true)
-             HStack {
-                Picker("Configuration", selection: postProcessIDBinding) {
-                    ForEach(settings.postProcessConfigs) { config in
-                        Text(config.name).tag(config.id)
-                    }
-                }
-                Button("Duplicate") { duplicatePostProcess() }
-                Button("New") { newPostProcess() }
-                Button("Delete") { deletePostProcess() }
-                    .disabled(settings.activePostProcessConfig.isBuiltInDefault || settings.postProcessConfigs.count < 2)
-            }
-            TextField("Name", text: $postProcessName)
-                .textFieldStyle(.roundedBorder)
-                .disabled(settings.activePostProcessConfig.isBuiltInDefault)
-                .onSubmit { savePostProcessDraft() }
-            TextEditor(text: $postProcessScript)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .disabled(settings.activePostProcessConfig.isBuiltInDefault)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
-            HStack {
-                Button("Save") { savePostProcessDraft() }
-                    .disabled(settings.activePostProcessConfig.isBuiltInDefault)
-                if !PostProcessor.lastError.isEmpty {
-                    Text(PostProcessor.lastError)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                }
-                if !postProcessMessage.isEmpty {
-                    Text(postProcessMessage)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var updatesTab: some View {
@@ -555,7 +499,7 @@ private struct AppRootView: View {
                 }
             }
             DisclosureGroup("Folder format", isExpanded: $showFormat) {
-                Text("commands/ and vocabulary/ are one JSON file each. delays.json holds pause times. post-process.json holds the JavaScript configs. settings.json holds microphone and login. See README.md in the folder.")
+                Text("commands/ and vocabulary/ are one JSON file each. delays.json holds pause times. settings.json holds microphone, login, and Apple automatic punctuation. See README.md in the folder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -644,7 +588,6 @@ private struct AppRootView: View {
         case playground
         case vocabulary
         case commands
-        case postProcess
         case updates
         case diagnostics
 
@@ -654,7 +597,6 @@ private struct AppRootView: View {
             case .playground: return "Playground"
             case .vocabulary: return "Vocabulary"
             case .commands: return "Commands"
-            case .postProcess: return "Post-process"
             case .updates: return "Updates"
             case .diagnostics: return "Diagnostics"
             }
@@ -666,7 +608,6 @@ private struct AppRootView: View {
             case .playground: return "square.and.pencil"
             case .vocabulary: return "text.book.closed"
             case .commands: return "command"
-            case .postProcess: return "function"
             case .updates: return "arrow.down.circle"
             case .diagnostics: return "waveform.path.ecg"
             }
@@ -763,20 +704,9 @@ private struct AppRootView: View {
             set: { on in
                 settings.disableFinalizeDelay = on
                 persist()
-                session.setFinalizeDelay(settings.finalizeDelaySeconds)
             }
         )
     }
-
-     private var postProcessOnlyOnFinalBinding: Binding<Bool> {
-         Binding(
-             get: { settings.postProcessOnlyOnFinal },
-             set: { on in
-                 settings.postProcessOnlyOnFinal = on
-                 persist()
-             }
-         )
-     }
 
     private var inputMethodBinding: Binding<Bool> {
         Binding(
@@ -809,73 +739,6 @@ private struct AppRootView: View {
                 }
             }
         )
-    }
-
-    private var postProcessIDBinding: Binding<String> {
-        Binding(
-            get: { settings.activePostProcessID },
-            set: { id in
-                savePostProcessDraft()
-                settings.activePostProcessID = id
-                persist()
-                loadPostProcessDraft()
-            }
-        )
-    }
-
-    private func loadPostProcessDraft() {
-        let config = settings.activePostProcessConfig
-        postProcessName = config.name
-        postProcessScript = config.script
-        postProcessMessage = config.isBuiltInDefault ? "Built-in Default. Duplicate to edit." : ""
-    }
-
-    private func savePostProcessDraft() {
-        guard !settings.activePostProcessConfig.isBuiltInDefault else { return }
-        let id = settings.activePostProcessID
-        if let index = settings.postProcessConfigs.firstIndex(where: { $0.id == id }) {
-            let name = postProcessName.trimmingCharacters(in: .whitespacesAndNewlines)
-            settings.postProcessConfigs[index].name = name.isEmpty ? "Untitled" : name
-            settings.postProcessConfigs[index].script = postProcessScript
-            persist()
-            postProcessMessage = "Saved."
-        }
-    }
-
-    private func duplicatePostProcess() {
-        savePostProcessDraft()
-        let source = settings.activePostProcessConfig
-        let copy = PostProcessConfig(
-            id: UUID().uuidString,
-            name: source.name == "Default" ? "Default copy" : "\(source.name) copy",
-            script: source.script
-        )
-        settings.postProcessConfigs.append(copy)
-        settings.activePostProcessID = copy.id
-        persist()
-        loadPostProcessDraft()
-    }
-
-    private func newPostProcess() {
-        savePostProcessDraft()
-        let blank = PostProcessConfig(
-            id: UUID().uuidString,
-            name: "New",
-            script: "function process(ctx) {\n  return ctx.text;\n}\n"
-        )
-        settings.postProcessConfigs.append(blank)
-        settings.activePostProcessID = blank.id
-        persist()
-        loadPostProcessDraft()
-    }
-
-    private func deletePostProcess() {
-        let id = settings.activePostProcessID
-        guard id != PostProcessConfig.defaultID else { return }
-        settings.postProcessConfigs.removeAll { $0.id == id }
-        settings.activePostProcessID = PostProcessConfig.defaultID
-        persist()
-        loadPostProcessDraft()
     }
 
     private func persist() {

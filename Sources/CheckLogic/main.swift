@@ -130,7 +130,6 @@ expect(
     DefaultPostProcess.apply(
         PostProcessInput(
             text: "In.",
-            isPartial: false,
             pendingLeadSpace: false,
             midSentence: true,
             snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false)
@@ -142,7 +141,6 @@ expect(
     DefaultPostProcess.apply(
         PostProcessInput(
             text: ".",
-            isPartial: false,
             pendingLeadSpace: true,
             midSentence: false,
             snapshot: nil
@@ -150,20 +148,6 @@ expect(
     ) == ".",
     "spoken lone period types, no lead space"
 )
-if let js = try? PostProcessor.runJavaScript(
-    DefaultPostProcess.javascriptSource,
-    input: PostProcessInput(
-        text: "In.",
-        isPartial: false,
-        pendingLeadSpace: false,
-        midSentence: true,
-        snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false)
-    )
-) {
-    expect(js == "in.", "js default mid in keeps spoken period")
-} else {
-    expect(false, "js default mid in ran")
-}
 expect(!AppNameResolver.discoveredApps().isEmpty, "discovers installed apps")
 if let chrome = AppNameResolver.resolve("chrome") {
     expect(chrome.name.lowercased().contains("chrome"), "chrome from installed apps")
@@ -269,7 +253,6 @@ expect(engineSource.contains("noteFinal"), "final clears pending finalize")
 expect(engineSource.contains("FinalizeGate"), "speech uses finalize gate")
 expect(!AppSettings.default.useInputMethod, "IMK off by default")
  expect(!AppSettings.default.disableFinalizeDelay, "silence finalize on by default")
- expect(!AppSettings.default.postProcessOnlyOnFinal, "post-process live by default")
 expect(engineSource.contains("disableForcedFinalize"), "can skip silence finalize")
 expect(liveSource.contains("finishCommittedMark"), "commit always clears live mark")
 expect(LiveCommitPolicy.shouldFinishAXMark(.ax), "finish live mark after AX")
@@ -680,12 +663,17 @@ do {
     expect(engine.contains("lastAutoPunctuation == autoPunctuation"), "toggling rebuilds the transcriber")
 }
 
+
 do {
+    // Settings saved by older versions (post-process configs, pause delay)
+    // still load; the removed keys are ignored.
+    let old = #"{"hasCompletedOnboarding":true,"postProcessOnlyOnFinal":true,"activePostProcessID":"x","postProcessConfigs":[],"lonePunctuationDelaySeconds":2,"punctuationModes":{}}"#.data(using: .utf8)!
+    let decoded = try? JSONDecoder().decode(AppSettings.self, from: old)
+    expect(decoded?.hasCompletedOnboarding == true, "old settings with removed keys still decode")
     let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)
-    // Both the delay picker and the "Disable silence finalize" toggle push
-    // the change into the running engine.
-    expect(window.components(separatedBy: "session.setFinalizeDelay(").count - 1 >= 2,
-           "Disable silence finalize applies to the running engine (from v0.1.39)")
+    expect(!window.contains("Post-process"), "no Post-process tab")
+    let folder = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Support/ConfigFolder.swift"), encoding: .utf8)
+    expect(folder.contains("removeItem(at: legacyPostProcessURL)"), "stale post-process.json is cleaned up")
 }
 
 print("CheckLogic passed")

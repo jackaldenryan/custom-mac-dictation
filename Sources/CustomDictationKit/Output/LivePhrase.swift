@@ -25,12 +25,12 @@ public enum LivePhrase {
     }
 
     public static func show(_ text: String) {
-        guard let out = shaped(text, isPartial: true) else { return }
+        let out = shaped(text)
         apply(out, keepSelected: true)
     }
 
     public static func commit(_ text: String) {
-        guard let out = shaped(text, isPartial: false) else { return }
+        let out = shaped(text)
         apply(out, keepSelected: false)
         finishCommittedMark()
         if !displayed.isEmpty { pendingLeadSpace = true }
@@ -96,7 +96,7 @@ public enum LivePhrase {
         }
     }
 
-    private static func shaped(_ text: String, isPartial: Bool) -> String? {
+    private static func shaped(_ text: String) -> String {
         if displayed.isEmpty {
             if usesInputMethod() {
                 phraseSnapshot = DictationTextInput.current.caretSnapshot() ?? InsertionContext.snapshot()
@@ -118,12 +118,11 @@ public enum LivePhrase {
         }
         let input = PostProcessInput(
             text: text,
-            isPartial: isPartial,
             pendingLeadSpace: pendingLeadSpace,
             midSentence: phraseIsMidSentence,
             snapshot: phraseSnapshot
         )
-        return PostProcessor.process(input, settings: SettingsStore.shared.settings)
+        return DefaultPostProcess.apply(input)
     }
 
     private static func apply(_ text: String, keepSelected: Bool) {
