@@ -160,9 +160,9 @@ expect(!Router.shouldHoldLive(transcript: "comma", state: .listening, settings: 
 expect(Router.shouldHoldLive(transcript: "press the open parentheses key", state: .listening, settings: .default), "hold press paren")
 do {
     // A lone mark is spoken punctuation now (Apple auto punctuation off), so
-    // the router types it. Playground keeps the test from typing for real.
-    PlaygroundTarget.shared.activate()
-    defer { PlaygroundTarget.shared.deactivate(); PlaygroundTarget.shared.resetField(); LivePhrase.displayed = "" }
+    // the router types it. The simulated field keeps it from typing for real.
+    LivePhrase.simulatedField = SimulatedField(box: .notes)
+    defer { LivePhrase.simulatedField = nil; LivePhrase.displayed = "" }
     expect(
         Router.handle(
             transcript: ".",
@@ -305,11 +305,6 @@ do {
     notes.finishIfNeeded()
     expect(notes.len == 0, "same-text commit clears highlight")
     expect(notes.text == "This is another test", "same-text commit keeps words")
-}
-do {
-    PlaygroundTarget.shared.isActive = true
-    PlaygroundTarget.shared.deactivate()
-    expect(!PlaygroundTarget.shared.isActive, "playground capture turns off")
 }
 do {
     let hid = SimulatedField(box: .slack, text: "ab", loc: 2, len: 0)
@@ -468,15 +463,14 @@ expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityG
 // Regression for "saying question mark after an existing ? does nothing":
 // the old boundary-punctuation filter dropped any mark that followed a mark
 // we typed (it existed only for Apple's repeated auto-punctuation guesses).
-// Drives the real LivePhrase and Router through the playground with no AX
+// Drives the real LivePhrase and Router into a simulated field with no AX
 // snapshot (worst case, like Slack). Finals arrive as Apple sends them with
 // auto punctuation off (scripts/probe-punctuation.sh): "Guess what?" then a
 // lone "?" for a second spoken "question mark".
 do {
-    let playground = PlaygroundTarget.shared
-    playground.box = .slack
-    playground.activate()
-    defer { playground.deactivate() }
+    var field = SimulatedField(box: .slack)
+    LivePhrase.simulatedField = field
+    defer { LivePhrase.simulatedField = nil }
     LivePhrase.displayed = ""
     LivePhrase.noteCommand()
     LivePhrase.pendingLeadSpace = false
@@ -487,28 +481,30 @@ do {
     }
     say(["Guess", "Guess what", "Guess what?"], "Guess what?")
     say(["?"], "?")
-    expect(playground.field.text == "Guess what??", "second spoken ? after an existing ? (got \(String(reflecting: playground.field.text)))")
+    expect(field.text == "Guess what??", "second spoken ? after an existing ? (got \(String(reflecting: field.text)))")
     say([], "!")
-    expect(playground.field.text == "Guess what??!", "spoken ! after ?")
+    expect(field.text == "Guess what??!", "spoken ! after ?")
     say(["I", "I don't know"], "I don't know.")
-    expect(playground.field.text == "Guess what??! I don't know.", "sentence after our ? starts capitalized with one space")
+    expect(field.text == "Guess what??! I don't know.", "sentence after our ? starts capitalized with one space")
     say([], ",")
     say(["and more"], ", and more")
-    expect(playground.field.text == "Guess what??! I don't know.,, and more",
-           "every spoken mark types, even right after another (got \(String(reflecting: playground.field.text)))")
+    expect(field.text == "Guess what??! I don't know.,, and more",
+           "every spoken mark types, even right after another (got \(String(reflecting: field.text)))")
 
     // A spoken mark in a new, empty field is still typed: the user said it.
-    playground.box = .notes
+    field = SimulatedField(box: .notes)
+    LivePhrase.simulatedField = field
     say([], ".")
-    expect(playground.field.text == ".", "spoken period into an empty field")
+    expect(field.text == ".", "spoken period into an empty field")
 
     // Mid-sentence insert keeps a spoken period but lowers Apple's capital.
-    playground.box = .slack
+    field = SimulatedField(box: .slack)
+    LivePhrase.simulatedField = field
     LivePhrase.noteCommand()
     LivePhrase.pendingLeadSpace = false
     say([], "Working")
     say([], "Now.")
-    expect(playground.field.text == "Working now.", "mid-sentence keeps spoken period (got \(String(reflecting: playground.field.text)))")
+    expect(field.text == "Working now.", "mid-sentence keeps spoken period (got \(String(reflecting: field.text)))")
 }
 
 // Apple automatic punctuation is always off (0.1.40): its pause guesses put
@@ -527,6 +523,9 @@ do {
     let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)
     expect(!window.contains("automatic punctuation"), "no auto punctuation toggle (it would bring back doubled marks)")
     expect(!window.contains("Input Method"), "no IMK toggle")
+    expect(!window.contains("Playground"), "no Playground tab in the app")
+    let live = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/LivePhrase.swift"), encoding: .utf8)
+    expect(live.contains("simulatedField"), "tests drive LivePhrase through a simulated field")
 }
 
 

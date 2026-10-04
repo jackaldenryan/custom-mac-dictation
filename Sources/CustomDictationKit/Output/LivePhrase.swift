@@ -4,6 +4,10 @@ import Foundation
 public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
+    /// Test hook: when set, phrases go into this simulated field instead of
+    /// the focused app, so CheckLogic can drive the real LivePhrase and
+    /// Router with no AX or keystrokes. Always nil in the app.
+    nonisolated(unsafe) public static var simulatedField: SimulatedField?
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
     nonisolated(unsafe) private static var lastInsertPath = LiveInsertPath.skipped
@@ -69,13 +73,16 @@ public enum LivePhrase {
     }
 
     private static func frontAppID() -> String {
-        if PlaygroundTarget.shared.isActive { return "playground:\(PlaygroundTarget.shared.box.rawValue)" }
+        if let field = simulatedField { return "simulated:\(field.box.rawValue)" }
         return NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
     }
 
     private static func finishCommittedMark() {
-        if PlaygroundTarget.shared.isActive {
-            PlaygroundTarget.shared.collapseLive()
+        if let field = simulatedField {
+            field.finishIfNeeded()
+            field.len = 0
+            field.displayed = ""
+            field.liveVisible = false
             return
         }
         if LiveCommitPolicy.shouldFinishAXMark(lastInsertPath) {
@@ -110,12 +117,10 @@ public enum LivePhrase {
 
     private static func apply(_ text: String, keepSelected: Bool) {
         if displayed == text { return }
-        if PlaygroundTarget.shared.isActive {
-            lastInsertPath = PlaygroundTarget.shared.apply(
-                shaped: text,
-                keepSelected: keepSelected,
-                isPartial: keepSelected && !text.isEmpty
-            )
+        if let field = simulatedField {
+            field.apply(shaped: text, keepSelected: keepSelected)
+            if !(keepSelected && !text.isEmpty) { field.finishIfNeeded() }
+            lastInsertPath = field.lastPath
             displayed = lastInsertPath == .skipped ? "" : text
             return
         }

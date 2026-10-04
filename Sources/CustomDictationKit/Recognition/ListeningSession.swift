@@ -139,13 +139,7 @@ public final class ListeningSession: ObservableObject {
     private func handlePartial(_ text: String) {
         lastPartial = text
         guard state == .listening else { return }
-        if PlaygroundTarget.shared.isActive {
-            PlaygroundTarget.shared.event("session partial=\(String(reflecting: text))")
-        }
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
-            if PlaygroundTarget.shared.isActive {
-                PlaygroundTarget.shared.event("session hold live")
-            }
             return
         }
         LivePhrase.show(text)
@@ -158,9 +152,6 @@ public final class ListeningSession: ObservableObject {
     private func handle(transcript: String) {
         lastFinal = transcript
         lastPartial = ""
-        if PlaygroundTarget.shared.isActive {
-            PlaygroundTarget.shared.event("session final=\(String(reflecting: transcript))")
-        }
         let settings = store.settings
         let result = Router.handle(
             transcript: transcript,
@@ -188,9 +179,6 @@ public final class ListeningSession: ObservableObject {
             onErrorMessage?(message)
         }
         DiagnosticLog.line("Route \(lastRoute) state=\(state.rawValue) text=\(transcript)")
-        if PlaygroundTarget.shared.isActive {
-            PlaygroundTarget.shared.event("route=\(lastRoute) text=\(String(reflecting: transcript))")
-        }
     }
 
     private func playHandledSound(for transcript: String) {

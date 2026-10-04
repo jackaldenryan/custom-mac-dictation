@@ -120,7 +120,6 @@ private struct AppRootView: View {
             Group {
                 switch section {
                 case .listen: listenTab
-                case .playground: PlaygroundView(session: session, target: .shared)
                 case .vocabulary: vocabularyTab
                 case .commands: commandsTab
                 case .updates: updatesTab
@@ -146,11 +145,6 @@ private struct AppRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: ConfigFolder.didChange)) { _ in
             store.reloadFromFolder()
             settings = store.settings
-        }
-        .onChange(of: section) { _, new in
-            if new != .playground {
-                PlaygroundTarget.shared.deactivate()
-            }
         }
     }
 
@@ -568,7 +562,6 @@ private struct AppRootView: View {
 
     private enum AppSection: String, CaseIterable, Hashable {
         case listen
-        case playground
         case vocabulary
         case commands
         case updates
@@ -577,7 +570,6 @@ private struct AppRootView: View {
         var title: String {
             switch self {
             case .listen: return "Listen"
-            case .playground: return "Playground"
             case .vocabulary: return "Vocabulary"
             case .commands: return "Commands"
             case .updates: return "Updates"
@@ -588,7 +580,6 @@ private struct AppRootView: View {
         var icon: String {
             switch self {
             case .listen: return "mic.fill"
-            case .playground: return "square.and.pencil"
             case .vocabulary: return "text.book.closed"
             case .commands: return "command"
             case .updates: return "arrow.down.circle"

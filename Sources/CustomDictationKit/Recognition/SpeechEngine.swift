@@ -134,15 +134,9 @@ public final class SpeechEngine: @unchecked Sendable {
                     )
                     if result.isFinal {
                         self?.finalizeGate.noteFinal()
-                        if PlaygroundTarget.shared.isActive {
-                            PlaygroundTarget.shared.event("speech final=\(String(reflecting: text))")
-                        }
                         self?.onFinalTranscript?(text)
                     } else {
                         self?.finalizeGate.notePartial()
-                        if PlaygroundTarget.shared.isActive {
-                            PlaygroundTarget.shared.event("speech partial=\(String(reflecting: text))")
-                        }
                         self?.onPartialTranscript?(text)
                     }
                 }
@@ -274,9 +268,6 @@ public final class SpeechEngine: @unchecked Sendable {
         }
         guard through.isValid, through.isNumeric, through.seconds > 0 else { return }
         do {
-            if PlaygroundTarget.shared.isActive {
-                PlaygroundTarget.shared.event("finalize through=\(through.seconds) delay=\(finalizeDelaySeconds) finalizeOff=\(disableForcedFinalize ? 1 : 0)")
-            }
             DiagnosticLog.line("Finalize through \(through.seconds)")
             try await analyzer.finalize(through: through)
             onFinalizeIdle?()

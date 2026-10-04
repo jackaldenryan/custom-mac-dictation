@@ -58,7 +58,7 @@ Or all four in parallel:
 ./scripts/check.sh
 ```
 
-CheckPhraseRules is the desired typing rules (spaces, capitals, spoken punctuation, acronyms). It can fail while you change the post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, spoken punctuation). CheckConfigMatrix runs each insertion strategy (`releaseHID` = v0.1.39 baseline, `axHID` = current, in `Output/InsertConfig.swift`) through the same simulated fields and reports final-text, flicker, safety plus measured capabilities: live-shown (text before finalize) and underlined (mark vs plain keystrokes). The app Playground sidebar speaks into simulated boxes and logs raw speech, writes, timers, and path (AX/HID).
+CheckPhraseRules is the desired typing rules (spaces, capitals, spoken punctuation, acronyms). It can fail while you change the post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, spoken punctuation). CheckConfigMatrix runs each insertion strategy (`releaseHID` = v0.1.39 baseline, `axHID` = current, in `Output/InsertConfig.swift`) through the same simulated fields and reports final-text, flicker, safety plus measured capabilities: live-shown (text before finalize) and underlined (mark vs plain keystrokes). CheckLogic drives the real `LivePhrase` + `Router` into a `SimulatedField` via `LivePhrase.simulatedField` (no AX, no keystrokes). The in-app Playground tab was removed in 0.1.41; its code is kept only locally in `local-archive/playground/` (gitignored).
 
 ## Tests for every bug
 
