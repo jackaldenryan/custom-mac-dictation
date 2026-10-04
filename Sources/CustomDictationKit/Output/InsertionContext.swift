@@ -166,16 +166,13 @@ public enum SentenceFit {
         capitalizeIfNeeded(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// Apple capitalizes the first word of every segment; mid-sentence that
+    /// capital is wrong, so it is lowered (acronyms and "I" kept). Trailing
+    /// marks are kept: with Apple's automatic punctuation off, every mark
+    /// was spoken.
     public static func midSentence(_ text: String) -> String {
-        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return text }
-        if t.hasSuffix("..."), t.count > 3 {
-            t = String(t.dropLast(3)).trimmingCharacters(in: .whitespaces)
-        } else if t.hasSuffix("."), !t.hasSuffix("..") {
-            t = String(t.dropLast()).trimmingCharacters(in: .whitespaces)
-        } else if t.hasSuffix("?"), t.count >= 2, t.dropLast().last?.isLetter == true || t.dropLast().last?.isNumber == true {
-            t = String(t.dropLast()).trimmingCharacters(in: .whitespaces)
-        }
         return decapitalizeIfNeeded(t)
     }
 

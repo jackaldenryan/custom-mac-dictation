@@ -1,11 +1,5 @@
 import Foundation
 
-public enum PunctuationMode: String, Codable, CaseIterable, Sendable {
-    case character
-    case word
-    case off
-}
-
 public struct VocabEntry: Codable, Equatable, Sendable, Identifiable {
     public var id: String { word.lowercased() }
     public var word: String
@@ -93,13 +87,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var microphoneUID: String?
     public var vocabulary: [VocabEntry]
     public var commands: [CommandSpec]
-    public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
-    public var lonePunctuationDelaySeconds: Double
-    public var disableLonePunctuationDelay: Bool
      public var disableFinalizeDelay: Bool
      public var postProcessOnlyOnFinal: Bool
      public var postProcessConfigs: [PostProcessConfig]
@@ -111,7 +102,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
-    public static let defaultLonePunctuationDelaySeconds = 1.0
 
     public static var `default`: AppSettings {
         AppSettings(
@@ -119,13 +109,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
             microphoneUID: nil,
             vocabulary: [],
             commands: CommandSpec.builtIns,
-            punctuationModes: [:],
             launchAtLogin: true,
             preferredListeningState: .off,
             finalizeDelaySeconds: defaultFinalizeDelaySeconds,
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
-            lonePunctuationDelaySeconds: defaultLonePunctuationDelaySeconds,
-            disableLonePunctuationDelay: false,
              disableFinalizeDelay: false,
              postProcessOnlyOnFinal: false,
              postProcessConfigs: [.builtInDefault],
@@ -140,13 +127,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case microphoneUID
         case vocabulary
         case commands
-        case punctuationModes
         case launchAtLogin
         case preferredListeningState
         case finalizeDelaySeconds
         case keyRepeatDelaySeconds
-        case lonePunctuationDelaySeconds
-        case disableLonePunctuationDelay
          case disableFinalizeDelay
          case postProcessOnlyOnFinal
          case postProcessConfigs
@@ -160,13 +144,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         microphoneUID: String?,
         vocabulary: [VocabEntry],
         commands: [CommandSpec],
-        punctuationModes: [String: PunctuationMode],
         launchAtLogin: Bool,
         preferredListeningState: ListeningState,
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
-        lonePunctuationDelaySeconds: Double,
-        disableLonePunctuationDelay: Bool = false,
          disableFinalizeDelay: Bool = false,
          postProcessOnlyOnFinal: Bool = false,
          postProcessConfigs: [PostProcessConfig],
@@ -178,13 +159,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.microphoneUID = microphoneUID
         self.vocabulary = vocabulary
         self.commands = commands
-        self.punctuationModes = punctuationModes
         self.launchAtLogin = launchAtLogin
         self.preferredListeningState = preferredListeningState
         self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
-        self.lonePunctuationDelaySeconds = Self.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
-        self.disableLonePunctuationDelay = disableLonePunctuationDelay
          self.disableFinalizeDelay = disableFinalizeDelay
          self.postProcessOnlyOnFinal = postProcessOnlyOnFinal
          self.postProcessConfigs = postProcessConfigs
@@ -206,7 +184,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         } else {
             commands = []
         }
-        punctuationModes = try container.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         preferredListeningState = try container.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
         finalizeDelaySeconds = Self.clampedFinalizeDelay(
@@ -215,10 +192,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(
             try container.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? Self.defaultKeyRepeatDelaySeconds
         )
-        lonePunctuationDelaySeconds = Self.clampedLonePunctuationDelay(
-            try container.decodeIfPresent(Double.self, forKey: .lonePunctuationDelaySeconds) ?? Self.defaultLonePunctuationDelaySeconds
-        )
-        disableLonePunctuationDelay = try container.decodeIfPresent(Bool.self, forKey: .disableLonePunctuationDelay) ?? false
          disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
          postProcessOnlyOnFinal = try container.decodeIfPresent(Bool.self, forKey: .postProcessOnlyOnFinal) ?? false
          postProcessConfigs = try container.decodeIfPresent([PostProcessConfig].self, forKey: .postProcessConfigs) ?? [.builtInDefault]
@@ -234,13 +207,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
         try container.encode(vocabulary, forKey: .vocabulary)
         try container.encode(commands, forKey: .commands)
-        try container.encode(punctuationModes, forKey: .punctuationModes)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
         try container.encode(preferredListeningState, forKey: .preferredListeningState)
         try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
         try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
-        try container.encode(lonePunctuationDelaySeconds, forKey: .lonePunctuationDelaySeconds)
-        try container.encode(disableLonePunctuationDelay, forKey: .disableLonePunctuationDelay)
          try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
          try container.encode(postProcessOnlyOnFinal, forKey: .postProcessOnlyOnFinal)
          try container.encode(postProcessConfigs, forKey: .postProcessConfigs)
@@ -273,22 +243,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static func clampedKeyRepeatDelay(_ seconds: Double) -> Double {
         guard seconds.isFinite else { return defaultKeyRepeatDelaySeconds }
         return min(max(seconds, 0), 2)
-    }
-
-    public static func clampedLonePunctuationDelay(_ seconds: Double) -> Double {
-        guard seconds.isFinite else { return defaultLonePunctuationDelaySeconds }
-        return min(max(seconds, 0), 10)
-    }
-
-    public var effectiveLonePunctuationDelay: Double {
-        disableLonePunctuationDelay ? 0 : lonePunctuationDelaySeconds
-    }
-
-    public static func lonePunctuationDelayTenths(_ seconds: Double) -> Int? {
-        let scaled = seconds * 10
-        let tenths = Int(scaled.rounded())
-        let allowed: Set<Int> = [0, 5, 10, 15, 20, 30]
-        return allowed.contains(tenths) ? tenths : nil
     }
 
     public static func keyRepeatDelayMillis(_ seconds: Double) -> Int? {
@@ -342,8 +296,6 @@ public final class SettingsStore: @unchecked Sendable {
         if let delays = ConfigFolder.loadDelays() {
             cached.finalizeDelaySeconds = delays.finalizeDelaySeconds
             cached.keyRepeatDelaySeconds = delays.keyRepeatDelaySeconds
-            cached.lonePunctuationDelaySeconds = delays.lonePunctuationDelaySeconds
-            cached.disableLonePunctuationDelay = delays.disableLonePunctuationDelay
             cached.disableFinalizeDelay = delays.disableFinalizeDelay
         }
         if let post = ConfigFolder.loadPostProcess() {
@@ -354,7 +306,6 @@ public final class SettingsStore: @unchecked Sendable {
         if let prefs = ConfigFolder.loadPrefs() {
             cached.hasCompletedOnboarding = prefs.hasCompletedOnboarding
             cached.microphoneUID = prefs.microphoneUID
-            cached.punctuationModes = prefs.punctuationModes
             cached.launchAtLogin = prefs.launchAtLogin
             cached.preferredListeningState = prefs.preferredListeningState
              cached.useInputMethod = prefs.useInputMethod

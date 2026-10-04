@@ -4,7 +4,6 @@ import Foundation
 public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
-    nonisolated(unsafe) public static var lastTypedAt = Date.distantPast
     nonisolated(unsafe) public static var useInputMethodOverride: Bool?
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
@@ -12,12 +11,12 @@ public enum LivePhrase {
     /// Insertion method chosen for the phrase on screen; nil between phrases.
     /// Once a phrase types with HID it stays HID (see PhrasePathLock).
     nonisolated(unsafe) private static var phrasePath: LiveInsertPath?
-    /// Last character dictation typed, and the app it went to. Lets a
-    /// segment's leading punctuation be checked against what we really typed
-    /// (see BoundaryPunctuation); cleared by commands.
+    /// Last character dictation typed, and the app it went to. When AX can't
+    /// read the caret, this decides capitalization (sentence start after our
+    /// own "." / "?" / "!") and drops the lead space after an app switch.
+    /// Cleared by commands.
     nonisolated(unsafe) private static var lastTypedTail: Character?
     nonisolated(unsafe) private static var lastTypedApp: String?
-    nonisolated(unsafe) private static var phraseCanAttachPunctuation = false
 
     public static func usesInputMethod() -> Bool {
         if DictationTextInput.override != nil { return true }
@@ -38,23 +37,6 @@ public enum LivePhrase {
         rememberTail(displayed)
         displayed = ""
         phrasePath = nil
-        lastTypedAt = Date()
-    }
-
-    /// Lone punctuation final from Apple ("?" after "What do you think").
-    /// Returns false when it was dropped (nothing of ours to attach to, or we
-    /// already typed punctuation there); the lead-space state is then kept.
-    @discardableResult
-    public static func commitLonePunctuation(_ text: String) -> Bool {
-        let before = lastTypedAt
-        let hadLeadSpace = pendingLeadSpace
-        pendingLeadSpace = false
-        commit(text)
-        if lastTypedAt == before {
-            pendingLeadSpace = hadLeadSpace
-            return false
-        }
-        return true
     }
 
     public static func discard() {
@@ -67,7 +49,6 @@ public enum LivePhrase {
     }
 
     public static func noteCommand() {
-        lastTypedAt = Date()
         pendingLeadSpace = true
         lastTypedTail = nil
         lastTypedApp = nil
@@ -124,28 +105,21 @@ public enum LivePhrase {
             }
             if let app = lastTypedApp, app != frontAppID() {
                 // New app, new field: nothing we typed sits before this
-                // caret, so neither a lead space nor glued punctuation.
+                // caret, so no lead space.
                 pendingLeadSpace = false
             }
-            let tail = tailInFrontApp()
             if let snap = phraseSnapshot {
                 phraseIsMidSentence = !InsertionContext.impliesSentenceStart(snap)
             } else {
-                phraseIsMidSentence = pendingLeadSpace && !BoundaryPunctuation.isTerminal(tail)
+                let tail = tailInFrontApp()
+                let endedSentence = tail.map { ".?!…".contains($0) } ?? false
+                phraseIsMidSentence = pendingLeadSpace && !endedSentence
             }
-            phraseCanAttachPunctuation = BoundaryPunctuation.canAttach(tail: tail, snapshot: phraseSnapshot)
-        }
-        guard let text = BoundaryPunctuation.clean(text, canAttach: phraseCanAttachPunctuation) else {
-            DiagnosticLog.line("Dropped boundary punctuation \(String(reflecting: text)); nothing to attach to")
-            return nil
         }
         let input = PostProcessInput(
             text: text,
             isPartial: isPartial,
             pendingLeadSpace: pendingLeadSpace,
-            lastTypedAge: Date().timeIntervalSince(lastTypedAt),
-            lonePunctuationDelay: SettingsStore.shared.settings.effectiveLonePunctuationDelay,
-            isLonePunctuation: TranscriptNormalizer.isLonePunctuation(text),
             midSentence: phraseIsMidSentence,
             snapshot: phraseSnapshot
         )

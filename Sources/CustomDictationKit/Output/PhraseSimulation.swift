@@ -6,9 +6,7 @@ public enum PhraseSimulation {
         at utf16Offset: Int? = nil,
         selectedLength: Int = 0,
         transcript: String,
-        lastTypedAge: Double = 5,
         pendingLeadSpace: Bool = false,
-        lonePunctuationDelay: Double = 0.4,
         isPartial: Bool = false
     ) -> String? {
         apply(
@@ -17,9 +15,7 @@ public enum PhraseSimulation {
             at: utf16Offset,
             selectedLength: selectedLength,
             transcript: transcript,
-            lastTypedAge: lastTypedAge,
             pendingLeadSpace: pendingLeadSpace,
-            lonePunctuationDelay: lonePunctuationDelay,
             isPartial: isPartial
         )
     }
@@ -29,9 +25,7 @@ public enum PhraseSimulation {
         at utf16Offset: Int? = nil,
         selectedLength: Int = 0,
         transcript: String,
-        lastTypedAge: Double = 5,
         pendingLeadSpace: Bool = false,
-        lonePunctuationDelay: Double = 0.4,
         isPartial: Bool = false
     ) throws -> String? {
         try applyThrows(
@@ -40,9 +34,7 @@ public enum PhraseSimulation {
             at: utf16Offset,
             selectedLength: selectedLength,
             transcript: transcript,
-            lastTypedAge: lastTypedAge,
             pendingLeadSpace: pendingLeadSpace,
-            lonePunctuationDelay: lonePunctuationDelay,
             isPartial: isPartial
         )
     }
@@ -52,9 +44,7 @@ public enum PhraseSimulation {
         at utf16Offset: Int? = nil,
         selectedLength: Int = 0,
         transcript: String,
-        lastTypedAge: Double = 5,
         pendingLeadSpace: Bool = false,
-        lonePunctuationDelay: Double = 0.4,
         isPartial: Bool = false
     ) -> PostProcessInput {
         let loc = utf16Offset ?? field.utf16.count
@@ -63,9 +53,6 @@ public enum PhraseSimulation {
             text: transcript,
             isPartial: isPartial,
             pendingLeadSpace: pendingLeadSpace,
-            lastTypedAge: lastTypedAge,
-            lonePunctuationDelay: lonePunctuationDelay,
-            isLonePunctuation: TranscriptNormalizer.isLonePunctuation(transcript),
             midSentence: !InsertionContext.impliesSentenceStart(snap),
             snapshot: snap
         )
@@ -77,9 +64,7 @@ public enum PhraseSimulation {
         at utf16Offset: Int?,
         selectedLength: Int,
         transcript: String,
-        lastTypedAge: Double,
         pendingLeadSpace: Bool,
-        lonePunctuationDelay: Double,
         isPartial: Bool
     ) -> String? {
         fn(
@@ -88,9 +73,7 @@ public enum PhraseSimulation {
                 at: utf16Offset,
                 selectedLength: selectedLength,
                 transcript: transcript,
-                lastTypedAge: lastTypedAge,
                 pendingLeadSpace: pendingLeadSpace,
-                lonePunctuationDelay: lonePunctuationDelay,
                 isPartial: isPartial
             )
         )
@@ -102,9 +85,7 @@ public enum PhraseSimulation {
         at utf16Offset: Int?,
         selectedLength: Int,
         transcript: String,
-        lastTypedAge: Double,
         pendingLeadSpace: Bool,
-        lonePunctuationDelay: Double,
         isPartial: Bool
     ) throws -> String? {
         try fn(
@@ -113,9 +94,7 @@ public enum PhraseSimulation {
                 at: utf16Offset,
                 selectedLength: selectedLength,
                 transcript: transcript,
-                lastTypedAge: lastTypedAge,
                 pendingLeadSpace: pendingLeadSpace,
-                lonePunctuationDelay: lonePunctuationDelay,
                 isPartial: isPartial
             )
         )

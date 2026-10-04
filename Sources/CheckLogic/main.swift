@@ -39,11 +39,6 @@ expect(KeyPressGrammar.parse("press command shift q")?.keyCode == 12, "cmd shift
 expect(KeyPressGrammar.parse("press the one key")?.keyCode == 18, "one key")
 expect(KeyPressGrammar.parse("press return")?.keyCode == 36, "return")
 expect(TranscriptNormalizer.normalize("Stop listening, dictation.") == "stop listening dictation", "normalize")
-expect(TranscriptNormalizer.isLonePunctuation("."), "lone period")
-expect(TranscriptNormalizer.isLonePunctuation("?"), "lone question")
-expect(!TranscriptNormalizer.isLonePunctuation(".."), "two periods not lone")
-expect(!TranscriptNormalizer.isLonePunctuation("store."), "phrase with period")
-expect(!TranscriptNormalizer.isLonePunctuation("hello"), "word")
 expect(AppVersion.isRemoteNewer("0.2.0", than: "0.1.0"), "newer")
 expect(!AppVersion.isRemoteNewer("0.1.0", than: "0.1.0"), "same")
 expect(IPAToXSampa.convert("kæt") == "k{t", "ipa")
@@ -93,8 +88,9 @@ expect(Router.shouldHoldLive(transcript: "open", state: .listening, settings: .d
 expect(Router.shouldHoldLive(transcript: "open safari", state: .listening, settings: .default), "hold open safari")
 expect(Router.shouldHoldLive(transcript: "upper case that", state: .listening, settings: .default), "hold upper case")
 expect(Router.shouldHoldLive(transcript: "upper", state: .listening, settings: .default), "hold upper")
-expect(SentenceFit.midSentence("In.") == "in", "mid in")
-expect(SentenceFit.midSentence("Working in development.") == "working in development", "mid strip period")
+expect(SentenceFit.midSentence("In.") == "in.", "mid lowers capital, keeps spoken period")
+expect(SentenceFit.midSentence("Working in development.") == "working in development.", "mid keeps spoken period")
+expect(SentenceFit.midSentence("Really?") == "really?", "mid keeps spoken question mark")
 expect(SentenceFit.midSentence("I think") == "I think", "keep pronoun I")
 expect(InsertionContext.leadingCharacterImpliesSentenceStart("Hello. ", utf16Location: 7), "after period")
 expect(!InsertionContext.leadingCharacterImpliesSentenceStart("working ", utf16Location: 8), "mid word")
@@ -136,44 +132,23 @@ expect(
             text: "In.",
             isPartial: false,
             pendingLeadSpace: false,
-            lastTypedAge: 5,
-            lonePunctuationDelay: 1,
-            isLonePunctuation: false,
             midSentence: true,
             snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false)
         )
-    ) == "in",
-    "default mid in"
+    ) == "in.",
+    "default mid-sentence keeps the spoken period, lowers Apple's capital"
 )
 expect(
     DefaultPostProcess.apply(
         PostProcessInput(
             text: ".",
             isPartial: false,
-            pendingLeadSpace: false,
-            lastTypedAge: 0.2,
-            lonePunctuationDelay: 1,
-            isLonePunctuation: true,
-            midSentence: false,
-            snapshot: nil
-        )
-    ) == nil,
-    "default drop leftover punct"
-)
-expect(
-    DefaultPostProcess.apply(
-        PostProcessInput(
-            text: ".",
-            isPartial: false,
-            pendingLeadSpace: false,
-            lastTypedAge: 0.2,
-            lonePunctuationDelay: 0,
-            isLonePunctuation: true,
+            pendingLeadSpace: true,
             midSentence: false,
             snapshot: nil
         )
     ) == ".",
-    "delay 0 keeps leftover punct"
+    "spoken lone period types, no lead space"
 )
 if let js = try? PostProcessor.runJavaScript(
     DefaultPostProcess.javascriptSource,
@@ -181,14 +156,11 @@ if let js = try? PostProcessor.runJavaScript(
         text: "In.",
         isPartial: false,
         pendingLeadSpace: false,
-        lastTypedAge: 5,
-        lonePunctuationDelay: 1,
-        isLonePunctuation: false,
         midSentence: true,
         snapshot: CaretSnapshot(before: " ", after: " ", selectedLength: 3, atStart: false)
     )
 ) {
-    expect(js == "in", "js default mid in")
+    expect(js == "in.", "js default mid in keeps spoken period")
 } else {
     expect(false, "js default mid in ran")
 }
@@ -202,26 +174,42 @@ expect(Router.shouldHoldLive(transcript: "press return", state: .listening, sett
 expect(!Router.shouldHoldLive(transcript: "hello there", state: .listening, settings: .default), "live hello")
 expect(!Router.shouldHoldLive(transcript: "comma", state: .listening, settings: .default), "live comma words")
 expect(Router.shouldHoldLive(transcript: "press the open parentheses key", state: .listening, settings: .default), "hold press paren")
-expect(
-    Router.handle(
-        transcript: ".",
-        state: .listening,
-        settings: .default,
-        onStartListening: {},
-        onStopListening: {}
-    ) == .ignored,
-    "ignore lone period"
-)
-expect(
-    Router.handle(
-        transcript: "?",
-        state: .listening,
-        settings: .default,
-        onStartListening: {},
-        onStopListening: {}
-    ) == .ignored,
-    "ignore lone question"
-)
+do {
+    // A lone mark is spoken punctuation now (Apple auto punctuation off), so
+    // the router types it. Playground keeps the test from typing for real.
+    PlaygroundTarget.shared.activate()
+    defer { PlaygroundTarget.shared.deactivate(); PlaygroundTarget.shared.resetField(); LivePhrase.displayed = "" }
+    expect(
+        Router.handle(
+            transcript: ".",
+            state: .listening,
+            settings: .default,
+            onStartListening: {},
+            onStopListening: {}
+        ) == .typed,
+        "lone spoken period is typed"
+    )
+    expect(
+        Router.handle(
+            transcript: "?",
+            state: .listening,
+            settings: .default,
+            onStartListening: {},
+            onStopListening: {}
+        ) == .typed,
+        "lone spoken question mark is typed"
+    )
+    expect(
+        Router.handle(
+            transcript: "?",
+            state: .suspended,
+            settings: .default,
+            onStartListening: {},
+            onStopListening: {}
+        ) == .ignored,
+        "suspended still ignores a lone mark"
+    )
+}
 expect(
     Router.handle(
         transcript: "hello there",
@@ -511,9 +499,6 @@ expect(KeyPressGrammar.parse("press left")?.keyCode == 123, "press left")
 expect(KeyPressGrammar.parse("press right")?.keyCode == 124, "press right")
 expect(TranscriptNormalizer.normalize("Uppercase that.") == "uppercase that", "normalize uppercase that")
 expect(TranscriptNormalizer.normalize("  Hello,  World!  ") == "hello world", "normalize extra space")
-expect(TranscriptNormalizer.isLonePunctuation("!"), "lone bang")
-expect(TranscriptNormalizer.isLonePunctuation(","), "lone comma")
-expect(!TranscriptNormalizer.isLonePunctuation("..."), "ellipsis not lone")
 expect(LiveMarkLogic.caretStillInMark(caret: 0, markStart: 0), "mark at zero")
 expect(!LiveMarkLogic.caretStillInMark(caret: 1, markStart: 0), "caret moved one")
 expect(!LiveMarkLogic.caretStillInMark(caret: 0, markStart: 8), "caret before mark")
@@ -533,21 +518,7 @@ expect(
 )
 expect(Router.shouldHoldLive(transcript: "hello", state: .suspended, settings: .default), "suspended holds live")
 
-LivePhrase.noteCommand()
-let ageAfterCommand = Date().timeIntervalSince(LivePhrase.lastTypedAt)
-expect(ageAfterCommand < 0.4, "noteCommand is recent")
-expect(
-    PhraseSimulation.typed(into: "Hi", transcript: ".", lastTypedAge: ageAfterCommand) == nil,
-    "period after command is leftover"
-)
-expect(
-    PhraseSimulation.typed(into: "Hi", transcript: ".", lastTypedAge: 0) == nil,
-    "age zero leftover period"
-)
-expect(
-    PhraseSimulation.typed(into: "Hi", transcript: ".", lastTypedAge: 1) == ".",
-    "period after pause types"
-)
+expect(PhraseSimulation.typed(into: "Hi", transcript: ".") == ".", "spoken period after a word types")
 
 expect(!Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGranted: true, microphoneAuthorized: true), "setup done")
 expect(Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGranted: false, microphoneAuthorized: true), "ax missing shows setup")
@@ -638,13 +609,14 @@ do {
     expect(doc.text == "sidebar", "live phrase skips when no client")
 }
 
-// Regression: "double punctuation and a message starting with a period".
-// Oct 3 Slack log: Apple sends a sentence's closing mark as a lone final
-// ("?") AND again at the start of the next segment ("? I don't know it
-// seems OK"). Both got typed: "What do you think?? I don't know",
-// "Let's test.. OK". Then in a new, empty field the carried-over "."
-// started the message: ". OK it looks like...". Drives the real LivePhrase
-// through the playground with no AX snapshot (worst case, like Slack).
+// Spoken punctuation is always typed (Apple automatic punctuation off).
+// Regression for "saying question mark after an existing ? does nothing":
+// the old boundary-punctuation filter dropped any mark that followed a mark
+// we typed (it existed only for Apple's repeated auto-punctuation guesses).
+// Drives the real LivePhrase and Router through the playground with no AX
+// snapshot (worst case, like Slack). Finals arrive as Apple sends them with
+// auto punctuation off (scripts/probe-punctuation.sh): "Guess what?" then a
+// lone "?" for a second spoken "question mark".
 do {
     let playground = PlaygroundTarget.shared
     playground.box = .slack
@@ -653,65 +625,35 @@ do {
     LivePhrase.displayed = ""
     LivePhrase.noteCommand()
     LivePhrase.pendingLeadSpace = false
-    func phrase(_ partials: [String], _ final: String, lone: String?) {
+    func say(_ partials: [String], _ final: String) {
         for p in partials { LivePhrase.show(p) }
-        LivePhrase.commit(final)
-        if let lone {
-            LivePhrase.lastTypedAt = .distantPast
-            LivePhrase.commitLonePunctuation(lone)
-        }
+        let route = Router.handle(transcript: final, state: .listening, settings: .default, onStartListening: {}, onStopListening: {})
+        expect(route == .typed, "\(String(reflecting: final)) is typed, not ignored")
     }
-    phrase(["What", "What do", "What do you", "What do you think", "What do you think?"], "What do you think", lone: "?")
-    phrase(["I", "I don't", "I don't know", "? I don't know it", "? I don't know it seems", "? I don't know it seems.",
-            "? I don't know it seems OK", "? I don't know it seems OK."], "? I don't know it seems OK", lone: ".")
-    phrase(["let", "let's", "let's test", "let's test."], "let's test", lone: ".")
-    phrase(["OK", "OK this", ". OK this seems", ". OK this seems de", ". OK. This seems decent", ". OK. This seems decent."],
-           ". OK. This seems decent", lone: ".")
-    let want = "What do you think? I don't know it seems OK. Let's test. OK. This seems decent."
-    expect(playground.field.text == want, "no doubled punctuation (got \(String(reflecting: playground.field.text)))")
+    say(["Guess", "Guess what", "Guess what?"], "Guess what?")
+    say(["?"], "?")
+    expect(playground.field.text == "Guess what??", "second spoken ? after an existing ? (got \(String(reflecting: playground.field.text)))")
+    say([], "!")
+    expect(playground.field.text == "Guess what??!", "spoken ! after ?")
+    say(["I", "I don't know"], "I don't know.")
+    expect(playground.field.text == "Guess what??! I don't know.", "sentence after our ? starts capitalized with one space")
+    say([], ",")
+    say(["and more"], ", and more")
+    expect(playground.field.text == "Guess what??! I don't know.,, and more",
+           "every spoken mark types, even right after another (got \(String(reflecting: playground.field.text)))")
 
-    // A lone mark right after one we typed is a duplicate.
-    LivePhrase.lastTypedAt = .distantPast
-    expect(!LivePhrase.commitLonePunctuation("."), "second period after a period is dropped")
-    expect(playground.field.text == want, "field unchanged by duplicate lone period")
-
-    // Switch to another app's empty field: the carried-over "." is dropped.
+    // A spoken mark in a new, empty field is still typed: the user said it.
     playground.box = .notes
-    phrase(["OK", ". OK it looks", ". OK it looks like that one issue is fixed"], ". OK it looks like that one issue is fixed", lone: nil)
-    expect(playground.field.text == "OK it looks like that one issue is fixed",
-           "new field never starts with carried-over punctuation (got \(String(reflecting: playground.field.text)))")
+    say([], ".")
+    expect(playground.field.text == ".", "spoken period into an empty field")
 
-    // Nothing typed yet: a lone mark has nothing to close.
+    // Mid-sentence insert keeps a spoken period but lowers Apple's capital.
     playground.box = .slack
     LivePhrase.noteCommand()
-    LivePhrase.lastTypedAt = .distantPast
-    expect(!LivePhrase.commitLonePunctuation("."), "lone period after a command is dropped")
-    expect(playground.field.text == "", "empty field stays empty")
-
-    // Explicitly spoken punctuation inside a segment is untouched.
     LivePhrase.pendingLeadSpace = false
-    phrase(["like this. And then the next sentence"], "like this. And then the next sentence", lone: ".")
-    expect(playground.field.text == "Like this. And then the next sentence.", "mid-segment punctuation kept")
-}
-do {
-    func snap(_ field: String) -> CaretSnapshot {
-        InsertionContext.snapshot(in: field, utf16Location: field.utf16.count, utf16Length: 0)
-    }
-    expect(BoundaryPunctuation.canAttach(tail: "k", snapshot: snap("What do you think")), "mark closes our word")
-    expect(BoundaryPunctuation.canAttach(tail: "k", snapshot: nil), "mark closes our word without AX")
-    expect(!BoundaryPunctuation.canAttach(tail: "?", snapshot: snap("What do you think?")), "no mark after our mark")
-    expect(!BoundaryPunctuation.canAttach(tail: "?", snapshot: snap("What do you think")), "our tail vetoes a stale AX caret")
-    expect(!BoundaryPunctuation.canAttach(tail: nil, snapshot: snap("")), "empty field: nothing to close")
-    expect(!BoundaryPunctuation.canAttach(tail: "l", snapshot: snap("")), "empty field even with a tail")
-    expect(!BoundaryPunctuation.canAttach(tail: "l", snapshot: snap("Done\n")), "start of a new line")
-    expect(BoundaryPunctuation.canAttach(tail: nil, snapshot: snap("working")), "user-typed word can take a spoken comma")
-    expect(!BoundaryPunctuation.canAttach(tail: nil, snapshot: nil), "nothing known: drop")
-    expect(BoundaryPunctuation.clean("? I don't know", canAttach: false) == "I don't know", "strip carried-over question mark")
-    expect(BoundaryPunctuation.clean(". OK. This", canAttach: false) == "OK. This", "strip only the leading run")
-    expect(BoundaryPunctuation.clean("?", canAttach: false) == nil, "lone mark with nothing to close")
-    expect(BoundaryPunctuation.clean("? I", canAttach: true) == "? I", "attachable mark kept")
-    expect(BoundaryPunctuation.clean("like this. And", canAttach: false) == "like this. And", "inner mark kept")
-    expect(BoundaryPunctuation.clean("OK", canAttach: false) == "OK", "no lead, no change")
+    say([], "Working")
+    say([], "Now.")
+    expect(playground.field.text == "Working now.", "mid-sentence keeps spoken period (got \(String(reflecting: playground.field.text)))")
 }
 
 // Apple automatic punctuation is off by default (Oct 3): its pause guesses

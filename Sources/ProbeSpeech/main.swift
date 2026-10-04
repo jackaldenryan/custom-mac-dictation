@@ -29,7 +29,7 @@ let transcriber = DictationTranscriber(
     locale: locale,
     contentHints: preset.contentHints,
     transcriptionOptions: options,
-    reportingOptions: [],
+    reportingOptions: TranscriberOptions.reporting(preset: preset),
     attributeOptions: []
 )
 if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -40,7 +40,8 @@ let analyzer = SpeechAnalyzer(modules: [transcriber])
 let collector = Task {
     var finals: [String] = []
     for try await result in transcriber.results where result.isFinal {
-        finals.append(String(result.text.characters))
+        let text = String(result.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty { finals.append(text) }
     }
     return finals
 }

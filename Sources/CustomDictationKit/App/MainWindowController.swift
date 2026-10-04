@@ -93,8 +93,6 @@ private struct AppRootView: View {
     @State private var finalizeUsesCustom = false
     @State private var customKeyRepeatText = ""
     @State private var keyRepeatUsesCustom = false
-    @State private var customLonePunctText = ""
-    @State private var lonePunctUsesCustom = false
     @State private var postProcessName = PostProcessConfig.builtInDefault.name
     @State private var postProcessScript = PostProcessConfig.builtInDefault.script
     @State private var postProcessMessage = ""
@@ -306,30 +304,6 @@ private struct AppRootView: View {
                         }
                     }
                     Text("Used when you say “press the page down key five times”. Default is 0.08 seconds.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Section("Spoken punctuation after a phrase") {
-                    Toggle("Disable punctuation delay", isOn: disableLonePunctBinding)
-                    Picker("Pause", selection: lonePunctMenuBinding) {
-                        ForEach([0, 5, 10, 15, 20, 30], id: \.self) { tenths in
-                            Text(Self.finalizeMenuLabel(tenths: tenths)).tag(LonePunctMenu.tenths(tenths))
-                        }
-                        Text("Custom").tag(LonePunctMenu.custom)
-                    }
-                    .disabled(settings.disableLonePunctuationDelay)
-                    if lonePunctMenu == .custom {
-                        HStack {
-                            TextField("Seconds", text: $customLonePunctText)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 120)
-                                .onSubmit { applyCustomLonePunctDelay() }
-                            Text("seconds")
-                                .foregroundStyle(.secondary)
-                            Button("Apply") { applyCustomLonePunctDelay() }
-                        }
-                    }
-                    Text("On: comma, period, and question mark type immediately. Off: spoken punctuation right after a phrase is ignored during the pause (default 1 second).")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -709,11 +683,6 @@ private struct AppRootView: View {
         case custom
     }
 
-    private enum LonePunctMenu: Hashable {
-        case tenths(Int)
-        case custom
-    }
-
     private var finalizeMenu: FinalizeMenu {
         if finalizeUsesCustom { return .custom }
         if let tenths = AppSettings.finalizeDelayTenths(settings.finalizeDelaySeconds) {
@@ -732,8 +701,7 @@ private struct AppRootView: View {
                     applyFinalizeDelay(Double(tenths) / 10)
                 case .custom:
                     finalizeUsesCustom = true
-            customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
-            customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
+                    customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
                 }
             }
         )
@@ -757,33 +725,7 @@ private struct AppRootView: View {
                     applyKeyRepeatDelay(Double(millis) / 1000)
                 case .custom:
                     keyRepeatUsesCustom = true
-            customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
-            customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
-                }
-            }
-        )
-    }
-
-    private var lonePunctMenu: LonePunctMenu {
-        if lonePunctUsesCustom { return .custom }
-        if let tenths = AppSettings.lonePunctuationDelayTenths(settings.lonePunctuationDelaySeconds) {
-            return .tenths(tenths)
-        }
-        return .custom
-    }
-
-    private var lonePunctMenuBinding: Binding<LonePunctMenu> {
-        Binding(
-            get: { lonePunctMenu },
-            set: { choice in
-                switch choice {
-                case .tenths(let tenths):
-                    lonePunctUsesCustom = false
-                    applyLonePunctDelay(Double(tenths) / 10)
-                case .custom:
-                    lonePunctUsesCustom = true
-            customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
-            loadPostProcessDraft()
+                    customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
                 }
             }
         )
@@ -834,16 +776,6 @@ private struct AppRootView: View {
              }
          )
      }
-
-     private var disableLonePunctBinding: Binding<Bool> {
-        Binding(
-            get: { settings.disableLonePunctuationDelay },
-            set: { on in
-                settings.disableLonePunctuationDelay = on
-                persist()
-            }
-        )
-    }
 
     private var inputMethodBinding: Binding<Bool> {
         Binding(
@@ -971,17 +903,6 @@ private struct AppRootView: View {
     private func applyCustomKeyRepeatDelay() {
         let parsed = Double(customKeyRepeatText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
         applyKeyRepeatDelay(parsed ?? settings.keyRepeatDelaySeconds)
-    }
-
-    private func applyLonePunctDelay(_ seconds: Double) {
-        settings.lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(seconds)
-        customLonePunctText = Self.finalizeFieldText(settings.lonePunctuationDelaySeconds)
-        persist()
-    }
-
-    private func applyCustomLonePunctDelay() {
-        let parsed = Double(customLonePunctText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
-        applyLonePunctDelay(parsed ?? settings.lonePunctuationDelaySeconds)
     }
 
     private static func keyRepeatMenuLabel(millis: Int) -> String {

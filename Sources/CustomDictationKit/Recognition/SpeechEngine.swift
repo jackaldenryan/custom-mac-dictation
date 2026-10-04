@@ -79,9 +79,7 @@ public final class SpeechEngine: @unchecked Sendable {
             hints.insert(.customizedLanguage(modelConfiguration: model))
         }
 
-        var reporting = preset.reportingOptions
-        reporting.insert(.volatileResults)
-        reporting.insert(.frequentFinalization)
+        let reporting = TranscriberOptions.reporting(preset: preset)
 
         let transcriber = DictationTranscriber(
             locale: locale,
@@ -136,13 +134,6 @@ public final class SpeechEngine: @unchecked Sendable {
                     if text.isEmpty {
                         if result.isFinal {
                             self?.onFinalizeIdle?()
-                        }
-                        continue
-                    }
-                    if TranscriptNormalizer.isLonePunctuation(text) {
-                        if result.isFinal {
-                            self?.finalizeGate.noteFinal()
-                            self?.onFinalTranscript?(text)
                         }
                         continue
                     }

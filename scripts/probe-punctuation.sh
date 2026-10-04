@@ -19,6 +19,8 @@ samples=(
   q1      "how are you doing today"
   q2      "where did you put the keys [[slnc 900]] I could not find them anywhere"
   multi   "I like apples [[slnc 900]] I also like oranges [[slnc 900]] what about you"
+  qq      "guess what question mark [[slnc 2000]] question mark [[slnc 2000]] I don't know"
+  seg     "this is a test period [[slnc 2000]] and this is another one comma [[slnc 2000]] comma and more"
 )
 for name text in "${(@kv)samples}"; do
   say -o "$dir/$name.wav" --file-format=WAVE --data-format=LEI16@16000 "$text"
@@ -26,6 +28,6 @@ for name text in "${(@kv)samples}"; do
   echo "--- auto ON"
   .build/debug/ProbeSpeech "$dir/$name.wav" | grep -E 'joined|options'
   echo "--- auto OFF"
-  .build/debug/ProbeSpeech "$dir/$name.wav" --no-auto-punctuation | grep -E 'joined'
+  .build/debug/ProbeSpeech "$dir/$name.wav" --no-auto-punctuation | grep -E 'final\[|joined'
 done
 rm -rf "$dir"

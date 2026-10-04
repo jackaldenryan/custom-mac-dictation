@@ -40,7 +40,7 @@ public enum Router {
             return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
         }
 
-        guard !trimmed.isEmpty, !TranscriptNormalizer.isLonePunctuation(trimmed) else { return .ignored }
+        guard !trimmed.isEmpty else { return .ignored }
         LivePhrase.commit(trimmed)
         return .typed
     }

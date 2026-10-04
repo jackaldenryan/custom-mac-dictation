@@ -21,7 +21,6 @@ public final class ListeningSession: ObservableObject {
     private let store: SettingsStore
     private var startGeneration = 0
     private var lastMicrophoneUID: String?
-    private var lastTypedAt = Date.distantPast
 
     public init(store: SettingsStore = .shared) {
         self.store = store
@@ -140,10 +139,6 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handlePartial(_ text: String) {
-        if TranscriptNormalizer.isLonePunctuation(text) {
-            lastPartial = ""
-            return
-        }
         lastPartial = text
         guard state == .listening else { return }
         if PlaygroundTarget.shared.isActive {
@@ -163,20 +158,6 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handle(transcript: String) {
-        if TranscriptNormalizer.isLonePunctuation(transcript) {
-            lastPartial = ""
-            let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard state == .listening else { return }
-            guard LivePhrase.commitLonePunctuation(trimmed) else {
-                DiagnosticLog.line("Route dropped state=\(state.rawValue) text=\(trimmed) lone punct")
-                return
-            }
-            lastTypedAt = LivePhrase.lastTypedAt
-            lastFinal = trimmed
-            lastRoute = "typed"
-            DiagnosticLog.line("Route typed state=\(state.rawValue) text=\(trimmed) delayed punct")
-            return
-        }
         lastFinal = transcript
         lastPartial = ""
         if PlaygroundTarget.shared.isActive {
@@ -200,7 +181,6 @@ public final class ListeningSession: ObservableObject {
             playHandledSound(for: transcript)
         case .typed:
             lastRoute = "typed"
-            lastTypedAt = Date()
         case .ignored:
             lastRoute = "ignored"
         case .failed(let message):

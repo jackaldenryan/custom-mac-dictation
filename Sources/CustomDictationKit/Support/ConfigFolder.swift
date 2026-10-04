@@ -270,8 +270,6 @@ public enum ConfigFolder {
     {
       "finalizeDelaySeconds": 0.4,
       "keyRepeatDelaySeconds": 0.08,
-      "lonePunctuationDelaySeconds": 1.0,
-      "disableLonePunctuationDelay": false,
       "disableFinalizeDelay": false
     }
     ```
@@ -295,7 +293,7 @@ public enum ConfigFolder {
 
     ## settings.json
 
-    Microphone, login, onboarding, and punctuation mode.
+    Microphone, login, onboarding, and Apple automatic punctuation (`appleAutoPunctuation`, off by default: punctuation only when spoken).
 
     ## commands/
 
@@ -347,21 +345,15 @@ public enum ConfigFolder {
 public struct DelaySettings: Codable, Equatable, Sendable {
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
-    public var lonePunctuationDelaySeconds: Double
-    public var disableLonePunctuationDelay: Bool
     public var disableFinalizeDelay: Bool
 
     public init(
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
-        lonePunctuationDelaySeconds: Double,
-        disableLonePunctuationDelay: Bool = false,
         disableFinalizeDelay: Bool = false
     ) {
         self.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
-        self.lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(lonePunctuationDelaySeconds)
-        self.disableLonePunctuationDelay = disableLonePunctuationDelay
         self.disableFinalizeDelay = disableFinalizeDelay
     }
 
@@ -369,8 +361,6 @@ public struct DelaySettings: Codable, Equatable, Sendable {
         self.init(
             finalizeDelaySeconds: settings.finalizeDelaySeconds,
             keyRepeatDelaySeconds: settings.keyRepeatDelaySeconds,
-            lonePunctuationDelaySeconds: settings.lonePunctuationDelaySeconds,
-            disableLonePunctuationDelay: settings.disableLonePunctuationDelay,
             disableFinalizeDelay: settings.disableFinalizeDelay
         )
     }
@@ -383,10 +373,6 @@ public struct DelaySettings: Codable, Equatable, Sendable {
         keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(
             try c.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? AppSettings.defaultKeyRepeatDelaySeconds
         )
-        lonePunctuationDelaySeconds = AppSettings.clampedLonePunctuationDelay(
-            try c.decodeIfPresent(Double.self, forKey: .lonePunctuationDelaySeconds) ?? AppSettings.defaultLonePunctuationDelaySeconds
-        )
-        disableLonePunctuationDelay = try c.decodeIfPresent(Bool.self, forKey: .disableLonePunctuationDelay) ?? false
         disableFinalizeDelay = try c.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
     }
 }
@@ -394,7 +380,6 @@ public struct DelaySettings: Codable, Equatable, Sendable {
 public struct PrefsSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
     public var microphoneUID: String?
-    public var punctuationModes: [String: PunctuationMode]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
      public var useInputMethod: Bool
@@ -404,7 +389,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
      public init(_ settings: AppSettings) {
          hasCompletedOnboarding = settings.hasCompletedOnboarding
          microphoneUID = settings.microphoneUID
-         punctuationModes = settings.punctuationModes
          launchAtLogin = settings.launchAtLogin
          preferredListeningState = settings.preferredListeningState
          useInputMethod = settings.useInputMethod
@@ -415,7 +399,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
      enum CodingKeys: String, CodingKey {
          case hasCompletedOnboarding
          case microphoneUID
-         case punctuationModes
          case launchAtLogin
          case preferredListeningState
          case useInputMethod
@@ -427,7 +410,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          let c = try decoder.container(keyedBy: CodingKeys.self)
          hasCompletedOnboarding = try c.decode(Bool.self, forKey: .hasCompletedOnboarding)
          microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID)
-         punctuationModes = try c.decodeIfPresent([String: PunctuationMode].self, forKey: .punctuationModes) ?? [:]
          launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
          preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
          useInputMethod = try c.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
@@ -439,7 +421,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          var c = encoder.container(keyedBy: CodingKeys.self)
          try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
          try c.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
-         try c.encode(punctuationModes, forKey: .punctuationModes)
          try c.encode(launchAtLogin, forKey: .launchAtLogin)
          try c.encode(preferredListeningState, forKey: .preferredListeningState)
          try c.encode(useInputMethod, forKey: .useInputMethod)

@@ -12,10 +12,4 @@ public enum TranscriptNormalizer {
             .joined(separator: " ")
         return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
-    public static func isLonePunctuation(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count == 1, let scalar = trimmed.unicodeScalars.first else { return false }
-        return CharacterSet.punctuationCharacters.contains(scalar)
-    }
 }

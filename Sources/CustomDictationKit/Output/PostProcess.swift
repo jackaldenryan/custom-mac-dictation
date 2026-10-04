@@ -25,9 +25,6 @@ public struct PostProcessInput: Equatable, Sendable {
     public var text: String
     public var isPartial: Bool
     public var pendingLeadSpace: Bool
-    public var lastTypedAge: Double
-    public var lonePunctuationDelay: Double
-    public var isLonePunctuation: Bool
     public var midSentence: Bool
     public var snapshot: CaretSnapshot?
 
@@ -35,18 +32,12 @@ public struct PostProcessInput: Equatable, Sendable {
         text: String,
         isPartial: Bool,
         pendingLeadSpace: Bool,
-        lastTypedAge: Double,
-        lonePunctuationDelay: Double,
-        isLonePunctuation: Bool,
         midSentence: Bool,
         snapshot: CaretSnapshot?
     ) {
         self.text = text
         self.isPartial = isPartial
         self.pendingLeadSpace = pendingLeadSpace
-        self.lastTypedAge = lastTypedAge
-        self.lonePunctuationDelay = lonePunctuationDelay
-        self.isLonePunctuation = isLonePunctuation
         self.midSentence = midSentence
         self.snapshot = snapshot
     }
@@ -54,10 +45,6 @@ public struct PostProcessInput: Equatable, Sendable {
 
 public enum DefaultPostProcess {
     public static func apply(_ input: PostProcessInput) -> String? {
-        if input.isLonePunctuation {
-            if input.lonePunctuationDelay > 0, input.lastTypedAge < input.lonePunctuationDelay { return nil }
-            return input.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
         var body = input.text
         if isMidSentence(input) {
             body = SentenceFit.midSentence(input.text)
@@ -84,10 +71,6 @@ public enum DefaultPostProcess {
     public static let javascriptSource = """
     function process(ctx) {
       var text = ctx.text || "";
-      if (ctx.isLonePunctuation) {
-        if (ctx.lonePunctuationDelay > 0 && ctx.lastTypedAge < ctx.lonePunctuationDelay) return null;
-        return String(text).trim();
-      }
       var body = text;
       if (isMidSentence(ctx)) body = midSentence(body);
       else body = sentenceStart(body);
@@ -120,9 +103,6 @@ public enum DefaultPostProcess {
     function midSentence(text) {
       var t = String(text).replace(/^\\s+|\\s+$/g, "");
       if (!t) return text;
-      if (t.length > 3 && t.slice(-3) === "...") t = t.slice(0, -3).replace(/\\s+$/g, "");
-      else if (t.slice(-1) === "." && t.slice(-2) !== "..") t = t.slice(0, -1).replace(/\\s+$/g, "");
-      else if (t.slice(-1) === "?" && t.length >= 2 && /[A-Za-z0-9]/.test(t.charAt(t.length - 2))) t = t.slice(0, -1).replace(/\\s+$/g, "");
       return decapitalizeIfNeeded(t);
     }
 
@@ -236,9 +216,6 @@ public enum PostProcessor {
             "text": input.text,
             "isPartial": input.isPartial,
             "pendingLeadSpace": input.pendingLeadSpace,
-            "lastTypedAge": input.lastTypedAge,
-            "lonePunctuationDelay": input.lonePunctuationDelay,
-            "isLonePunctuation": input.isLonePunctuation,
             "midSentence": input.midSentence,
             "caret": input.snapshot == nil ? NSNull() : caret
         ]

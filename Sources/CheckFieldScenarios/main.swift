@@ -68,7 +68,6 @@ final class Doc {
     var intoStub = false
     var liveVisible = false
     var commandFailed = false
-    var lastTypedAge: Double
     var pendingLeadSpace: Bool
     let box: Box
     let engine: Engine
@@ -76,13 +75,12 @@ final class Doc {
     private var markStart: Int?
     private var stubText = ""
 
-    init(text: String, loc: Int? = nil, len: Int = 0, box: Box, engine: Engine, lastTypedAge: Double = 5, pendingLeadSpace: Bool = false) {
+    init(text: String, loc: Int? = nil, len: Int = 0, box: Box, engine: Engine, pendingLeadSpace: Bool = false) {
         self.text = text
         self.loc = loc ?? (text as NSString).length
         self.len = len
         self.box = box
         self.engine = engine
-        self.lastTypedAge = lastTypedAge
         self.pendingLeadSpace = pendingLeadSpace
     }
 
@@ -94,7 +92,6 @@ final class Doc {
             at: loc,
             selectedLength: len,
             transcript: transcript,
-            lastTypedAge: lastTypedAge,
             pendingLeadSpace: pendingLeadSpace
         )
     }
@@ -181,7 +178,6 @@ final class Doc {
             if i < partials.count { liveVisible = true }
             displayed = out
         }
-        lastTypedAge = 0
         pendingLeadSpace = !displayed.isEmpty
         displayed = ""
     }
@@ -209,23 +205,18 @@ final class Doc {
             displayed = out
             if i < partials.count { liveVisible = true }
         }
-        lastTypedAge = 0
         pendingLeadSpace = !displayed.isEmpty
         displayed = ""
     }
 
-    func leftoverPeriodAfterCommand() {
-        lastTypedAge = engine == .release ? 5 : 0
-        pressKeyThenPeriod()
-    }
-
-    func pressKeyThenPeriod() {
+    /// A spoken mark on its own ("question mark" -> "?"). With Apple's
+    /// automatic punctuation off, every mark Apple sends was spoken.
+    func sayPunctuation(_ mark: String) {
         let chunk = PhraseSimulation.typed(
             into: text,
             at: loc,
             selectedLength: len,
-            transcript: ".",
-            lastTypedAge: lastTypedAge,
+            transcript: mark,
             pendingLeadSpace: false
         )
         if let chunk {
@@ -360,10 +351,9 @@ let cases: [Case] = [
         d.uppercaseSelection()
         return (d.snapshot(), Want(text: "Hello WORLD"))
     },
-    Case(name: "notes lowercase whole line no extra period") { engine in
+    Case(name: "notes lowercase whole line") { engine in
         let d = Doc(text: "HELLO", loc: 0, len: 5, box: .notes, engine: engine)
         d.lowercaseSelection()
-        d.leftoverPeriodAfterCommand()
         return (d.snapshot(), Want(text: "hello"))
     },
     Case(name: "chrome url live") { engine in
@@ -421,17 +411,6 @@ let cases: [Case] = [
         d.lowercaseSelection()
         return (d.snapshot(), Want(text: "hello"))
     },
-    Case(name: "slack lowercase line no leftover period") { engine in
-        let d = Doc(text: "HELLO", loc: 0, len: 5, box: .slack, engine: engine)
-        d.lowercaseSelection()
-        d.leftoverPeriodAfterCommand()
-        return (d.snapshot(), Want(text: "hello"))
-    },
-    Case(name: "slack press C no leftover period") { engine in
-        let d = Doc(text: "ab", box: .slack, engine: engine)
-        d.leftoverPeriodAfterCommand()
-        return (d.snapshot(), Want(text: "ab"))
-    },
     Case(name: "cursor editor live") { engine in
         let d = Doc(text: "", box: .cursorEditor, engine: engine)
         d.dictation(partials: ["func", "func main"], final: "func main")
@@ -462,17 +441,20 @@ let cases: [Case] = [
         d.dictation(partials: ["h", "hi there"], final: "hi there")
         return (d.snapshot(), Want(text: "Hi there", flickered: false, liveVisible: true))
     },
-    Case(name: "random mid sentence period dropped after type") { engine in
+    Case(name: "spoken period after word") { engine in
         let d = Doc(text: "Working now", box: .notes, engine: engine)
-        d.lastTypedAge = 0.1
-        d.pressKeyThenPeriod()
-        return (d.snapshot(), Want(text: "Working now"))
-    },
-    Case(name: "period allowed after pause") { engine in
-        let d = Doc(text: "Working now", box: .notes, engine: engine)
-        d.lastTypedAge = 2
-        d.pressKeyThenPeriod()
+        d.sayPunctuation(".")
         return (d.snapshot(), Want(text: "Working now."))
+    },
+    Case(name: "second spoken question mark after one") { engine in
+        let d = Doc(text: "Really?", box: .slack, engine: engine)
+        d.sayPunctuation("?")
+        return (d.snapshot(), Want(text: "Really??"))
+    },
+    Case(name: "spoken comma right after a period") { engine in
+        let d = Doc(text: "Done.", box: .notes, engine: engine)
+        d.sayPunctuation(",")
+        return (d.snapshot(), Want(text: "Done.,"))
     },
     Case(name: "second utterance spaces") { engine in
         let d = Doc(text: "", box: .notes, engine: engine)
@@ -523,11 +505,6 @@ let cases: [Case] = [
         d.dictation(partials: ["Jack"], final: "Jack")
         return (d.snapshot(), Want(text: "Hi jack", liveVisible: true))
     },
-    Case(name: "press C in notes no period") { engine in
-        let d = Doc(text: "", box: .notes, engine: engine)
-        d.leftoverPeriodAfterCommand()
-        return (d.snapshot(), Want(text: ""))
-    },
     Case(name: "cursor editor uppercase") { engine in
         let d = Doc(text: "hello", loc: 0, len: 5, box: .cursorEditor, engine: engine)
         d.uppercaseSelection()
@@ -542,11 +519,6 @@ let cases: [Case] = [
         let d = Doc(text: "hello world", loc: 5, box: .slack, engine: engine)
         d.dictation(partials: [], final: "there")
         return (d.snapshot(), Want(text: "hello there world"))
-    },
-    Case(name: "notes leftover period after command") { engine in
-        let d = Doc(text: "X", box: .notes, engine: engine)
-        d.leftoverPeriodAfterCommand()
-        return (d.snapshot(), Want(text: "X"))
     },
     Case(name: "google live revision") { engine in
         let d = Doc(text: "", box: .googleSearch, engine: engine)
@@ -580,11 +552,6 @@ let extraFieldCases: [Case] = {
             d.dictation(partials: [], final: "Hello")
             d.dictation(partials: [], final: "there")
             return (d.snapshot(), Want(text: "Hello there"))
-        })
-        extra.append(Case(name: "\(n) press key no leftover period") { engine in
-            let d = Doc(text: "ab", box: box, engine: engine)
-            d.leftoverPeriodAfterCommand()
-            return (d.snapshot(), Want(text: "ab"))
         })
         extra.append(Case(name: "\(n) overwrite middle word") { engine in
             let d = Doc(text: "one two three", loc: 4, len: 3, box: box, engine: engine)
@@ -651,11 +618,6 @@ let extraFieldCases: [Case] = {
         d.len = 0
         d.dictation(partials: [], final: "news")
         return (d.snapshot(), Want(text: "Apple.com news"))
-    })
-    extra.append(Case(name: "zoom leftover period after command") { engine in
-        let d = Doc(text: "Hi", box: .zoom, engine: engine)
-        d.leftoverPeriodAfterCommand()
-        return (d.snapshot(), Want(text: "Hi"))
     })
     extra.append(Case(name: "slack capitalize selection via uppercase") { engine in
         let d = Doc(text: "ok", loc: 0, len: 2, box: .slack, engine: engine)

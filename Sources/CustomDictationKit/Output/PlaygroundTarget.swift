@@ -83,7 +83,7 @@ public final class PlaygroundTarget: @unchecked Sendable, ObservableObject {
         }
         text = field.text
         event(
-             "write partial=\(isPartial ? 1 : 0) path=\(field.lastPath.rawValue) shaped=\(String(reflecting: shaped)) sel=\(sel) before=\(String(reflecting: before)) after=\(String(reflecting: field.text)) caret=\(field.loc)+\(field.len) lastTypedAge=\(String(format: "%.3f", Date().timeIntervalSince(LivePhrase.lastTypedAt))) finalize=\(settings.finalizeDelaySeconds) finalizeOff=\(settings.disableFinalizeDelay ? 1 : 0) punctDelay=\(settings.effectiveLonePunctuationDelay) punctOff=\(settings.disableLonePunctuationDelay ? 1 : 0) postOnlyFinal=\(settings.postProcessOnlyOnFinal ? 1 : 0) imk=\(LivePhrase.usesInputMethod())"
+             "write partial=\(isPartial ? 1 : 0) path=\(field.lastPath.rawValue) shaped=\(String(reflecting: shaped)) sel=\(sel) before=\(String(reflecting: before)) after=\(String(reflecting: field.text)) caret=\(field.loc)+\(field.len) finalize=\(settings.finalizeDelaySeconds) finalizeOff=\(settings.disableFinalizeDelay ? 1 : 0) autoPunct=\(settings.appleAutoPunctuation ? 1 : 0) postOnlyFinal=\(settings.postProcessOnlyOnFinal ? 1 : 0) imk=\(LivePhrase.usesInputMethod())"
         )
         return field.lastPath
     }

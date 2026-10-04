@@ -18,14 +18,12 @@ func check(_ name: String, _ got: String?, _ want: String?) {
 func typed(
     _ field: String,
     _ transcript: String,
-    age: Double = 5,
     pending: Bool = false,
     partial: Bool = false
 ) -> String? {
     PhraseSimulation.typed(
         into: field,
         transcript: transcript,
-        lastTypedAge: age,
         pendingLeadSpace: pending,
         isPartial: partial
     )
@@ -60,16 +58,20 @@ check("mid-sentence lowercase, prefix space", typed("working", "In the lab"), " 
 check("mid-sentence existing space, no extra space", typed("working ", "In the lab"), "in the lab")
 check("mid-sentence keep I pronoun", typed("working ", "I think"), "I think")
 
-check("drop leftover period within 0.4s", typed("Hi", ".", age: 0.2), nil)
-check("drop leftover question within 0.4s", typed("Hi", "?", age: 0.2), nil)
-check("allow lone period after delay", typed("Hi", ".", age: 1), ".")
-check("allow word after 0.4s", typed("Hi", "a", age: 1), " a")
+// Apple automatic punctuation is off: every mark was spoken, so it types.
+check("spoken period after word", typed("Hi", "."), ".")
+check("spoken question after word", typed("Hi", "?"), "?")
+check("second spoken question after question", typed("Really?", "?"), "?")
+check("spoken period after period", typed("Wait.", "."), ".")
+check("spoken comma after comma", typed("one,", ","), ",")
+check("spoken period into empty field", typed("", "."), ".")
+check("word after word gets a space", typed("Hi", "a"), " a")
 
 check("do not add a period", typed("", "Hello"), "Hello")
 check("keep a period at sentence start", typed("", "Hello."), "Hello.")
 check("keep question mark at sentence start", typed("", "Hello?"), "Hello?")
-check("strip leftover period mid-sentence", typed("working ", "Hello."), "hello")
-check("strip leftover question mid-sentence", typed("working ", "Hello?"), "hello")
+check("keep spoken period mid-sentence", typed("working ", "Hello."), "hello.")
+check("keep spoken question mid-sentence", typed("working ", "Hello?"), "hello?")
 
 check("no space before comma mid-sentence", typed("working", ", and"), ", and")
 check("no space before semicolon mid-sentence", typed("working", "; and"), "; and")
@@ -88,9 +90,8 @@ check("after colon capitalize", typed("Note: ", "hello"), "hello")
 check("after semicolon mid", typed("wait; ", "Hello"), "hello")
 check("ellipsis is sentence start", typed("Wait… ", "Hello"), "Hello")
 check("after newline indent still sentence start", typed("Done.\n\n", "hello"), "Hello")
-check("drop leftover bang within 0.4s", typed("Hi", "!", age: 0.2), nil)
-check("drop leftover comma within 0.4s", typed("Hi", ",", age: 0.2), nil)
-check("allow lone bang after delay", typed("Hi", "!", age: 1), "!")
+check("spoken bang after word", typed("Hi", "!"), "!")
+check("spoken comma after word", typed("Hi", ","), ",")
 check("no space before colon mid-sentence", typed("working", ": yes"), ": yes")
 check("opening paren no extra space after existing space", typed("see ", "(hello"), "(hello")
 check("opening paren after letter gets space", typed("see", "(hello"), " (hello")
@@ -98,7 +99,7 @@ check("closing-style quote attaches", typed("said", "\"hi"), "\"hi")
 check("don't double space", typed("working  ", "Hello"), "hello")
 check("tab after word is mid-sentence", typed("Done\t", "Hello"), "hello")
 check("keep ellipsis at start", typed("", "Hello..."), "Hello...")
-check("strip leftover ellipsis mid-sentence", typed("working ", "Hello..."), "hello")
+check("keep spoken ellipsis mid-sentence", typed("working ", "Hello..."), "hello...")
 check("question after letter no space", typed("right", "?"), "?")
 check("bang after letter no space", typed("wow", "!"), "!")
 check("space already before question", typed("right ", "?"), "?")
@@ -107,10 +108,12 @@ check("mid keep all-caps two letters", typed("code ", "ID"), "ID")
 check("after closing brace space", typed("hello}", "there"), " there")
 check("after em dash space", typed("wait—", "hello"), " hello")
 do {
-    let js = try PhraseSimulation.typedJavaScript(into: "Hi", transcript: ".", lastTypedAge: 0.2)
-    check("js matches swift leftover period drop", js, typed("Hi", ".", age: 0.2))
+    let js = try PhraseSimulation.typedJavaScript(into: "Really?", transcript: "?")
+    check("js matches swift second question mark", js, typed("Really?", "?"))
+    let mid = try PhraseSimulation.typedJavaScript(into: "working ", transcript: "Hello.")
+    check("js matches swift spoken period mid-sentence", mid, typed("working ", "Hello."))
 } catch {
-    check("js leftover period drop", error.localizedDescription, nil)
+    check("js spoken punctuation", error.localizedDescription, nil)
 }
 
 do {
@@ -122,10 +125,9 @@ do {
 
 check("partial matches final empty hello", typed("", "hello", partial: true), typed("", "hello"))
 check("partial matches final mid-sentence", typed("working ", "In the lab", partial: true), typed("working ", "In the lab"))
-check("partial leftover period still dropped", typed("Hi", ".", age: 0.2, partial: true), nil)
-check("partial leftover question still dropped", typed("Hi", "?", age: 0.2, partial: true), nil)
+check("partial spoken period types", typed("Hi", ".", partial: true), ".")
 check("partial keeps capital at start", typed("", "Hello", partial: true), "Hello")
-check("partial strips leftover period mid-sentence", typed("working ", "Hello.", partial: true), "hello")
+check("partial keeps spoken period mid-sentence", typed("working ", "Hello.", partial: true), "hello.")
 do {
     let js = try PhraseSimulation.typedJavaScript(into: "working ", transcript: "In the lab", isPartial: true)
     check("js partial matches swift", js, typed("working ", "In the lab", partial: true))

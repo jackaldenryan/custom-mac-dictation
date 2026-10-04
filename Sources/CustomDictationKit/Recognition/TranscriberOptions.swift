@@ -21,4 +21,14 @@ public enum TranscriberOptions {
         }
         return options
     }
+
+    /// Live (volatile) results plus frequent finalization, as the app runs.
+    public static func reporting(
+        preset: DictationTranscriber.Preset
+    ) -> Set<DictationTranscriber.ReportingOption> {
+        var reporting = preset.reportingOptions
+        reporting.insert(.volatileResults)
+        reporting.insert(.frequentFinalization)
+        return reporting
+    }
 }

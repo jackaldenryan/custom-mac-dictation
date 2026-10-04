@@ -22,13 +22,11 @@ Do not use `./scripts/install-local.sh` for this. That overwrites Applications a
 
 Slack, Cursor, VS Code, OpenCode, Chrome, Safari pages and any Electron/Chromium/WebKit view answer AX text writes with success but apply them late or never, and the attempt moves the caret first. Falling back to keystrokes after that typed into the middle of earlier words (Oct 3: "hey guess what I don't know you tell me" in Slack came out "Hey, guess? I don't know you tell .me don't"). `Output/AXWritePolicy.swift` blocks AX writes there up front; `FieldEditor.write` restores the selection on any failed write and turns AX off for that app for the session; `PhrasePathLock` keeps a phrase on HID once it starts on HID. Regression: `slackLogReplay` in CheckLogic.
 
-## Apple repeats boundary punctuation
-
-SpeechAnalyzer sends a sentence's closing mark twice: as a lone final ("?") after the words' final, and again at the start of the next segment ("? I don't know"). `Output/BoundaryPunctuation.swift` types leading or lone punctuation only when it can close a word dictation just typed in the same app (and the AX caret, when readable, agrees). Otherwise it is dropped, so no "think?? I" and no message starting with ".". Regression: the playground replay in CheckLogic ("no doubled punctuation").
-
 ## Apple automatic punctuation is off by default
 
 Setting `appleAutoPunctuation` (Listen → Punctuation, `settings.json` in the config folder). Off removes `.punctuation` from the DictationTranscriber options (`Recognition/TranscriberOptions.swift`): no marks guessed from pauses, spoken "period" / "comma" / "question mark" / "exclamation point" still convert. Check real-model behavior with `./scripts/probe-punctuation.sh` (speaks samples with `say`, transcribes each with it on and off via `swift run ProbeSpeech`).
+
+Because every mark is now spoken, the app types every mark it gets. Removed (Oct 3, rollback tag `snapshot-auto-punct-off-before-cleanup`) because they only existed to undo Apple's guesses: dropping repeated boundary punctuation, the lone-punctuation pause setting, and stripping a trailing ". ? ..." when inserting mid-sentence. Kept: lowering Apple's segment-start capital mid-sentence (Apple still capitalizes each segment).
 
 ## Phrase / post-process rules
 
@@ -56,7 +54,7 @@ Or all four in parallel:
 ./scripts/check.sh
 ```
 
-CheckPhraseRules is the desired typing rules (spaces, capitals, leftover punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, leftover period). CheckConfigMatrix runs every insertion strategy (`releaseHID`, `axHID`, `imkOnly`, `imkFallback` in `Output/InsertConfig.swift`) through the same simulated fields and reports final-text, flicker, safety plus measured capabilities: live-shown (text before finalize) and underlined (mark vs plain keystrokes). The app Playground sidebar speaks into simulated boxes and logs raw speech, writes, timers, and path (AX/HID/IMK).
+CheckPhraseRules is the desired typing rules (spaces, capitals, spoken punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, spoken punctuation). CheckConfigMatrix runs every insertion strategy (`releaseHID`, `axHID`, `imkOnly`, `imkFallback` in `Output/InsertConfig.swift`) through the same simulated fields and reports final-text, flicker, safety plus measured capabilities: live-shown (text before finalize) and underlined (mark vs plain keystrokes). The app Playground sidebar speaks into simulated boxes and logs raw speech, writes, timers, and path (AX/HID/IMK).
 
 ## Tests for every bug
 
