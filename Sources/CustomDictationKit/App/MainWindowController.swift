@@ -763,6 +763,7 @@ private struct AppRootView: View {
             set: { on in
                 settings.disableFinalizeDelay = on
                 persist()
+                session.setFinalizeDelay(settings.finalizeDelaySeconds)
             }
         )
     }

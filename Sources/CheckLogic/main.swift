@@ -680,4 +680,12 @@ do {
     expect(engine.contains("lastAutoPunctuation == autoPunctuation"), "toggling rebuilds the transcriber")
 }
 
+do {
+    let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)
+    // Both the delay picker and the "Disable silence finalize" toggle push
+    // the change into the running engine.
+    expect(window.components(separatedBy: "session.setFinalizeDelay(").count - 1 >= 2,
+           "Disable silence finalize applies to the running engine (from v0.1.39)")
+}
+
 print("CheckLogic passed")
