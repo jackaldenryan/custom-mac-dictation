@@ -81,6 +81,25 @@ public enum LinkOpener {
         return nil
     }
 
+    /// A link found near the pointer, with its on-screen frame.
+    public struct Candidate: Equatable, Sendable {
+        public var url: String
+        public var frame: CGRect
+        public init(url: String, frame: CGRect) {
+            self.url = url
+            self.frame = frame
+        }
+    }
+
+    /// The link whose frame contains the pointer; the smallest one wins (the
+    /// most specific link, not a big card that also covers the spot).
+    public static func pickLink(_ candidates: [Candidate], at point: CGPoint) -> String? {
+        candidates
+            .filter { isOpenable($0.url) && $0.frame.contains(point) && $0.frame.width > 0 && $0.frame.height > 0 }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }?
+            .url
+    }
+
     static func isOpenable(_ url: String) -> Bool {
         let lower = url.lowercased()
         return lower.hasPrefix("http://") || lower.hasPrefix("https://") || lower.hasPrefix("file://")
@@ -99,6 +118,14 @@ public enum LinkOpener {
             AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
             if let (again, _) = elementAt(point) { url = linkURL(in: path(from: again)) }
         }
+        if url == nil, let (hit, _) = elementAt(point) {
+            // Button-style links: the pointer is often on a child the link
+            // does not wrap (an image or label inside a card), or on an
+            // overlay laid on top of the real <a>. Look inside the element
+            // under the pointer and around it for a link covering the spot.
+            url = pickLink(nearbyLinks(around: hit), at: point)
+            if let url { DiagnosticLog.line("Command click: link found near the pointer \(url)") }
+        }
         guard let url else {
             DiagnosticLog.line("Command click: no link under pointer in \(app.localizedName ?? bundleID)")
             return false
@@ -113,6 +140,58 @@ public enum LinkOpener {
         }
         DiagnosticLog.line("Command click: opened \(url) in a new tab of \(app.localizedName ?? bundleID)")
         return true
+    }
+
+    /// Links in the subtree of the element under the pointer and of its
+    /// nearest ancestors (stopping at the web area). Bounded so a huge page
+    /// never stalls the command.
+    private static func nearbyLinks(around hit: AXUIElement, ancestors: Int = 3, maxNodes: Int = 400) -> [Candidate] {
+        var roots: [AXUIElement] = [hit]
+        var current = hit
+        for _ in 0..<ancestors {
+            guard string(current, kAXRoleAttribute) != "AXWebArea", let up = parent(current) else { break }
+            if string(up, kAXRoleAttribute) == "AXWebArea" { break }
+            roots.append(up)
+            current = up
+        }
+        var found: [Candidate] = []
+        var visited = 0
+        // Search the widest root once: it contains the others.
+        var queue: [(AXUIElement, Int)] = [(roots.last!, 0)]
+        while !queue.isEmpty, visited < maxNodes {
+            let (el, depth) = queue.removeFirst()
+            visited += 1
+            if string(el, kAXRoleAttribute) == "AXLink", let url = urlString(el), let frame = frame(el) {
+                found.append(Candidate(url: url, frame: frame))
+            }
+            if depth < 8 {
+                for child in children(el) { queue.append((child, depth + 1)) }
+            }
+        }
+        return found
+    }
+
+    private static func children(_ el: AXUIElement) -> [AXUIElement] {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &ref) == .success,
+              let list = ref as? [AXUIElement]
+        else { return [] }
+        return list
+    }
+
+    private static func frame(_ el: AXUIElement) -> CGRect? {
+        var posRef: CFTypeRef?
+        var sizeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &posRef) == .success,
+              AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &sizeRef) == .success,
+              let posVal = posRef, let sizeVal = sizeRef
+        else { return nil }
+        var point = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(posVal as! AXValue, .cgPoint, &point),
+              AXValueGetValue(sizeVal as! AXValue, .cgSize, &size)
+        else { return nil }
+        return CGRect(origin: point, size: size)
     }
 
     private static func elementAt(_ point: CGPoint) -> (AXUIElement, pid_t)? {

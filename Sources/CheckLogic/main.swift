@@ -552,6 +552,22 @@ do {
     expect(LinkOpener.linkURL(in: [N(role: "AXButton", url: nil), N(role: "AXWebArea", url: "https://example.com"), N(role: "AXLink", url: "https://x.com")]) == nil,
            "nothing above the web area counts (browser chrome)")
     expect(LinkOpener.linkURL(in: [N(role: "AXLink", url: "javascript:void(0)")]) == nil, "script links fall back to a real click")
+    // Button-style links: pointer on a card image/label or an overlay, the
+    // <a> is nearby rather than an ancestor (Oct 3: worked on text links,
+    // not on a button-like element).
+    typealias C = LinkOpener.Candidate
+    let p = CGPoint(x: 50, y: 50)
+    expect(LinkOpener.pickLink([C(url: "https://card.example", frame: CGRect(x: 0, y: 0, width: 300, height: 200)),
+                                C(url: "https://inner.example", frame: CGRect(x: 40, y: 40, width: 30, height: 20))], at: p)
+           == "https://inner.example", "most specific link covering the pointer wins")
+    expect(LinkOpener.pickLink([C(url: "https://card.example", frame: CGRect(x: 0, y: 0, width: 300, height: 200))], at: p)
+           == "https://card.example", "card link found when the pointer is on an overlay")
+    expect(LinkOpener.pickLink([C(url: "https://elsewhere.example", frame: CGRect(x: 200, y: 200, width: 30, height: 20))], at: p) == nil,
+           "a nearby link that does not cover the pointer is not opened")
+    expect(LinkOpener.pickLink([C(url: "javascript:go()", frame: CGRect(x: 0, y: 0, width: 300, height: 200))], at: p) == nil,
+           "script-only buttons still fall back to a click")
+    let opener = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/LinkOpener.swift"), encoding: .utf8)
+    expect(opener.contains("pickLink(nearbyLinks(around: hit), at: point)"), "nearby search runs when no link wraps the pointer")
     expect(LinkOpener.family(bundleID: "com.google.Chrome") == .chromium, "Chrome uses the Chromium script")
     expect(LinkOpener.family(bundleID: "com.apple.Safari") == .safari, "Safari script")
     expect(LinkOpener.family(bundleID: "com.apple.finder") == nil, "Finder command click stays a click")
