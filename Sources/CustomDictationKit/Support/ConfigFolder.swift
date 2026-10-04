@@ -257,6 +257,7 @@ public enum ConfigFolder {
     {
       "finalizeDelaySeconds": 0.4,
       "keyRepeatDelaySeconds": 0.08,
+      "commandSettleSeconds": 0.2,
       "disableFinalizeDelay": false
     }
     ```
@@ -315,15 +316,18 @@ public enum ConfigFolder {
 public struct DelaySettings: Codable, Equatable, Sendable {
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
+    public var commandSettleSeconds: Double
     public var disableFinalizeDelay: Bool
 
     public init(
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
+        commandSettleSeconds: Double = AppSettings.defaultCommandSettleSeconds,
         disableFinalizeDelay: Bool = false
     ) {
         self.finalizeDelaySeconds = AppSettings.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
+        self.commandSettleSeconds = AppSettings.clampedCommandSettle(commandSettleSeconds)
         self.disableFinalizeDelay = disableFinalizeDelay
     }
 
@@ -331,6 +335,7 @@ public struct DelaySettings: Codable, Equatable, Sendable {
         self.init(
             finalizeDelaySeconds: settings.finalizeDelaySeconds,
             keyRepeatDelaySeconds: settings.keyRepeatDelaySeconds,
+            commandSettleSeconds: settings.commandSettleSeconds,
             disableFinalizeDelay: settings.disableFinalizeDelay
         )
     }
@@ -342,6 +347,9 @@ public struct DelaySettings: Codable, Equatable, Sendable {
         )
         keyRepeatDelaySeconds = AppSettings.clampedKeyRepeatDelay(
             try c.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? AppSettings.defaultKeyRepeatDelaySeconds
+        )
+        commandSettleSeconds = AppSettings.clampedCommandSettle(
+            try c.decodeIfPresent(Double.self, forKey: .commandSettleSeconds) ?? AppSettings.defaultCommandSettleSeconds
         )
         disableFinalizeDelay = try c.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
     }

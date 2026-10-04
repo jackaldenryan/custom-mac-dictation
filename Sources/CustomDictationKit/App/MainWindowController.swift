@@ -90,6 +90,8 @@ private struct AppRootView: View {
     @State private var finalizeUsesCustom = false
     @State private var customKeyRepeatText = ""
     @State private var keyRepeatUsesCustom = false
+    @State private var customCommandSettleText = ""
+    @State private var commandSettleUsesCustom = false
     @State private var section: AppSection = .listen
     @State private var vocabSearch = ""
     @State private var commandSearch = ""
@@ -253,6 +255,29 @@ private struct AppRootView: View {
                         }
                     }
                     Text("On: wait for Apple’s final only. Off: after this silence we nudge Apple to finish the phrase (default 0.4s).")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Section("Run a command after") {
+                    Picker("Pause", selection: commandSettleMenuBinding) {
+                        ForEach(AppSettings.commandSettleMenuMillis, id: \.self) { millis in
+                            Text(Self.commandSettleMenuLabel(millis: millis)).tag(CommandSettleMenu.millis(millis))
+                        }
+                        Text("Custom").tag(CommandSettleMenu.custom)
+                    }
+                    if commandSettleMenu == .custom {
+                        HStack {
+                            TextField("Seconds", text: $customCommandSettleText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 120)
+                                .onSubmit { applyCustomCommandSettle() }
+                            Text("seconds")
+                                .foregroundStyle(.secondary)
+                            Button("Apply") { applyCustomCommandSettle() }
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    Text("Commands like “open Slack” run once the words have stayed the same this long, instead of waiting for Apple to finish the phrase. Longer is safer for multi-part commands like “press the down key five times”. Default is 0.2 seconds.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -596,6 +621,52 @@ private struct AppRootView: View {
     private enum KeyRepeatMenu: Hashable {
         case millis(Int)
         case custom
+    }
+
+    private enum CommandSettleMenu: Hashable {
+        case millis(Int)
+        case custom
+    }
+
+    private var commandSettleMenu: CommandSettleMenu {
+        if commandSettleUsesCustom { return .custom }
+        if let millis = AppSettings.commandSettleMillis(settings.commandSettleSeconds) {
+            return .millis(millis)
+        }
+        return .custom
+    }
+
+    private var commandSettleMenuBinding: Binding<CommandSettleMenu> {
+        Binding(
+            get: { commandSettleMenu },
+            set: { choice in
+                switch choice {
+                case .millis(let millis):
+                    commandSettleUsesCustom = false
+                    applyCommandSettle(Double(millis) / 1000)
+                case .custom:
+                    commandSettleUsesCustom = true
+                    customCommandSettleText = Self.keyRepeatFieldText(settings.commandSettleSeconds)
+                }
+            }
+        )
+    }
+
+    private func applyCommandSettle(_ seconds: Double) {
+        settings.commandSettleSeconds = AppSettings.clampedCommandSettle(seconds)
+        customCommandSettleText = Self.keyRepeatFieldText(settings.commandSettleSeconds)
+        persist()
+    }
+
+    private func applyCustomCommandSettle() {
+        let parsed = Double(customCommandSettleText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+        applyCommandSettle(parsed ?? settings.commandSettleSeconds)
+    }
+
+    private static func commandSettleMenuLabel(millis: Int) -> String {
+        if millis == 0 { return "Immediately" }
+        if millis % 1000 == 0 { return "\(millis / 1000) second\(millis == 1000 ? "" : "s")" }
+        return String(format: "%.2g seconds", Double(millis) / 1000)
     }
 
     private var finalizeMenu: FinalizeMenu {

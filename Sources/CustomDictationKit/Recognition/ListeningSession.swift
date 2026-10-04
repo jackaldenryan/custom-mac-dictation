@@ -159,12 +159,13 @@ public final class ListeningSession: ObservableObject {
 
     /// Commands used to wait for Apple's final, 1-2 s after you stop
     /// talking. A live transcript that is already a whole command runs once
-    /// it has been stable for `EarlyCommand.settleSeconds`; its final is
+    /// it has been stable for `commandSettleSeconds`; its final is
     /// then skipped (see EarlyCommand.resolveFinal).
     private func scheduleEarlyCommand(_ text: String) {
         earlyCommandText = text
+        let settle = store.settings.commandSettleSeconds
         earlyCommandTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(Int(EarlyCommand.settleSeconds * 1000)))
+            try? await Task.sleep(for: .milliseconds(Int(settle * 1000)))
             guard !Task.isCancelled, let self, self.state == .listening, self.lastPartial == text else { return }
             self.ranEarly = EarlyCommand.Ran(normalized: TranscriptNormalizer.normalize(text), at: Date())
             DiagnosticLog.line("Command from live text (not waiting for final) text=\(text)")

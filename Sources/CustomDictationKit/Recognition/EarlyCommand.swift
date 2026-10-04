@@ -3,9 +3,9 @@ import Foundation
 /// Running commands from live text instead of Apple's final.
 public enum EarlyCommand {
     /// How long a live transcript that is a whole command must stay
-    /// unchanged before it runs. Short enough to feel instant, long enough
-    /// that "press the down key" can still grow into "... five times".
-    public static let settleSeconds = 0.4
+    /// unchanged before it runs: `AppSettings.commandSettleSeconds`
+    /// (Listen tab, delays.json; default 0.2 s). Longer lets "press the
+    /// down key" still grow into "... five times"; shorter feels faster.
 
     /// A command that already ran from live text.
     public struct Ran: Equatable, Sendable {

@@ -91,10 +91,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var preferredListeningState: ListeningState
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
+    /// How long live text that is a whole command must stay unchanged before
+    /// the command runs (instead of waiting for Apple's final).
+    public var commandSettleSeconds: Double
     public var disableFinalizeDelay: Bool
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
+    public static let defaultCommandSettleSeconds = 0.2
 
     public static var `default`: AppSettings {
         AppSettings(
@@ -106,6 +110,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             preferredListeningState: .off,
             finalizeDelaySeconds: defaultFinalizeDelaySeconds,
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
+            commandSettleSeconds: defaultCommandSettleSeconds,
             disableFinalizeDelay: false
         )
     }
@@ -119,6 +124,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case preferredListeningState
         case finalizeDelaySeconds
         case keyRepeatDelaySeconds
+        case commandSettleSeconds
         case disableFinalizeDelay
     }
 
@@ -131,6 +137,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         preferredListeningState: ListeningState,
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
+        commandSettleSeconds: Double = AppSettings.defaultCommandSettleSeconds,
         disableFinalizeDelay: Bool = false
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
@@ -141,6 +148,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.preferredListeningState = preferredListeningState
         self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
+        self.commandSettleSeconds = Self.clampedCommandSettle(commandSettleSeconds)
         self.disableFinalizeDelay = disableFinalizeDelay
     }
 
@@ -164,6 +172,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(
             try container.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? Self.defaultKeyRepeatDelaySeconds
         )
+        commandSettleSeconds = Self.clampedCommandSettle(
+            try container.decodeIfPresent(Double.self, forKey: .commandSettleSeconds) ?? Self.defaultCommandSettleSeconds
+        )
         disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
     }
 
@@ -177,6 +188,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(preferredListeningState, forKey: .preferredListeningState)
         try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
         try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
+        try container.encode(commandSettleSeconds, forKey: .commandSettleSeconds)
         try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
     }
 
@@ -188,6 +200,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static func clampedKeyRepeatDelay(_ seconds: Double) -> Double {
         guard seconds.isFinite else { return defaultKeyRepeatDelaySeconds }
         return min(max(seconds, 0), 2)
+    }
+
+    public static func clampedCommandSettle(_ seconds: Double) -> Double {
+        guard seconds.isFinite else { return defaultCommandSettleSeconds }
+        return min(max(seconds, 0), 3)
+    }
+
+    public static let commandSettleMenuMillis = [0, 100, 200, 300, 400, 500, 750, 1000]
+
+    public static func commandSettleMillis(_ seconds: Double) -> Int? {
+        let millis = Int((seconds * 1000).rounded())
+        return commandSettleMenuMillis.contains(millis) ? millis : nil
     }
 
     public static func keyRepeatDelayMillis(_ seconds: Double) -> Int? {
@@ -241,6 +265,7 @@ public final class SettingsStore: @unchecked Sendable {
         if let delays = ConfigFolder.loadDelays() {
             cached.finalizeDelaySeconds = delays.finalizeDelaySeconds
             cached.keyRepeatDelaySeconds = delays.keyRepeatDelaySeconds
+            cached.commandSettleSeconds = delays.commandSettleSeconds
             cached.disableFinalizeDelay = delays.disableFinalizeDelay
         }
         if let prefs = ConfigFolder.loadPrefs() {

@@ -583,7 +583,13 @@ do {
     if AppNameResolver.resolve("finder") != nil {
         expect(Router.isEarlyCommand(transcript: "open finder", state: .listening, settings: s), "open an installed app runs early")
     }
-    expect(EarlyCommand.settleSeconds <= 0.5, "early commands feel instant")
+    expect(AppSettings.default.commandSettleSeconds == 0.2, "commands run 0.2 s after the words settle by default")
+    expect(AppSettings.clampedCommandSettle(9) == 3 && AppSettings.clampedCommandSettle(-1) == 0, "command pause clamped to 0-3 s")
+    expect(DelaySettings(AppSettings.default).commandSettleSeconds == 0.2, "command pause saved in delays.json")
+    let oldDelays = #"{"finalizeDelaySeconds":0.4,"keyRepeatDelaySeconds":0.08}"#.data(using: .utf8)!
+    expect((try? JSONDecoder().decode(DelaySettings.self, from: oldDelays))?.commandSettleSeconds == 0.2, "older delays.json gets the 0.2 s default")
+    let sessionSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(sessionSource.contains("store.settings.commandSettleSeconds"), "session uses the command pause setting")
     let now = Date()
     let ran = EarlyCommand.Ran(normalized: "open slack", at: now)
     expect(EarlyCommand.resolveFinal("open Slack", ran: ran, now: now) == .skip, "final of an early command is skipped")
