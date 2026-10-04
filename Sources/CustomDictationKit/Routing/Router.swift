@@ -200,12 +200,7 @@ public enum Router {
             return .handled
         case .pasteText:
             guard let text = command.pasteText, !text.isEmpty else { return .failed("That paste command is empty") }
-            if LivePhrase.usesInputMethod() {
-                guard DictationTextInput.current.isAvailable else { return .failed("No text field") }
-                DictationTextInput.current.insertText(text)
-            } else {
-                Typist.typeText(text)
-            }
+            Typist.typeText(text)
             LivePhrase.noteCommand()
             return .handled
         case .openFile:

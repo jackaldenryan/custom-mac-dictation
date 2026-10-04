@@ -31,7 +31,7 @@ public final class PlaygroundTarget: @unchecked Sendable, ObservableObject {
     public func resetField() {
         field = SimulatedField(box: box, text: "")
         text = ""
-        event("reset box=\(box.rawValue) imk=\(LivePhrase.usesInputMethod())")
+        event("reset box=\(box.rawValue)")
     }
 
     public func clearLog() {
@@ -77,13 +77,13 @@ public final class PlaygroundTarget: @unchecked Sendable, ObservableObject {
         let settings = SettingsStore.shared.settings
         let before = field.text
         let sel = "\(field.loc)+\(field.len)"
-        field.apply(shaped: shaped, keepSelected: keepSelected, useInputMethod: LivePhrase.usesInputMethod())
+        field.apply(shaped: shaped, keepSelected: keepSelected)
         if !isPartial {
             field.finishIfNeeded()
         }
         text = field.text
         event(
-             "write partial=\(isPartial ? 1 : 0) path=\(field.lastPath.rawValue) shaped=\(String(reflecting: shaped)) sel=\(sel) before=\(String(reflecting: before)) after=\(String(reflecting: field.text)) caret=\(field.loc)+\(field.len) finalize=\(settings.finalizeDelaySeconds) finalizeOff=\(settings.disableFinalizeDelay ? 1 : 0) autoPunct=\(settings.appleAutoPunctuation ? 1 : 0) imk=\(LivePhrase.usesInputMethod())"
+             "write partial=\(isPartial ? 1 : 0) path=\(field.lastPath.rawValue) shaped=\(String(reflecting: shaped)) sel=\(sel) before=\(String(reflecting: before)) after=\(String(reflecting: field.text)) caret=\(field.loc)+\(field.len) finalize=\(settings.finalizeDelaySeconds) finalizeOff=\(settings.disableFinalizeDelay ? 1 : 0)"
         )
         return field.lastPath
     }

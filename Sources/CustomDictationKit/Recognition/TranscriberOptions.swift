@@ -4,10 +4,11 @@ import Speech
 /// The DictationTranscriber options the app runs with, shared by the app's
 /// SpeechEngine and the ProbeSpeech tool so both test the same thing.
 ///
-/// Automatic punctuation is OFF by default (Oct 3): Apple's model guessed
-/// marks at pauses ("or is it just? Something", "issue though. Is that").
-/// With it off, marks come only from spoken punctuation ("period",
-/// "comma", "question mark"), like Voice Control.
+/// The app always runs with automatic punctuation OFF (0.1.40): Apple's
+/// model guessed marks at pauses ("or is it just? Something", "issue
+/// though. Is that"). Marks come only from spoken punctuation ("period",
+/// "comma", "question mark"), like Voice Control, and the typing logic
+/// relies on that. `autoPunctuation: true` exists only for ProbeSpeech.
 public enum TranscriberOptions {
     public static func transcription(
         preset: DictationTranscriber.Preset,

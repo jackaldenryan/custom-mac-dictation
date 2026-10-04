@@ -26,7 +26,6 @@ public final class SpeechEngine: @unchecked Sendable {
     private var outputFormat: AVAudioFormat?
     private var lastMicrophoneUID: String?
     private var lastVocabSignature = ""
-    private var lastAutoPunctuation: Bool?
     public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
     public var disableForcedFinalize = false
     public var isRunning: Bool { capture != nil }
@@ -47,15 +46,9 @@ public final class SpeechEngine: @unchecked Sendable {
         onAssetProgress?(1)
     }
 
-    public func start(
-        microphoneUID: String?,
-        vocabulary: [VocabEntry],
-        commandPhrases: [String],
-        autoPunctuation: Bool = false
-    ) async throws {
+    public func start(microphoneUID: String?, vocabulary: [VocabEntry], commandPhrases: [String]) async throws {
         let signature = Self.signature(vocabulary: vocabulary, phrases: commandPhrases)
-        if analyzer != nil, inputContinuation != nil, lastMicrophoneUID == microphoneUID, lastVocabSignature == signature,
-           lastAutoPunctuation == autoPunctuation {
+        if analyzer != nil, inputContinuation != nil, lastMicrophoneUID == microphoneUID, lastVocabSignature == signature {
             if capture == nil {
                 try startCapture(microphoneUID: microphoneUID)
                 DiagnosticLog.line("Capture resumed")
@@ -65,7 +58,6 @@ public final class SpeechEngine: @unchecked Sendable {
         await teardown()
         lastMicrophoneUID = microphoneUID
         lastVocabSignature = signature
-        lastAutoPunctuation = autoPunctuation
         let locale = await resolvedLocale()
         _ = try await AssetInventory.reserve(locale: locale)
 
@@ -84,7 +76,7 @@ public final class SpeechEngine: @unchecked Sendable {
         let transcriber = DictationTranscriber(
             locale: locale,
             contentHints: hints,
-            transcriptionOptions: TranscriberOptions.transcription(preset: preset, autoPunctuation: autoPunctuation),
+            transcriptionOptions: TranscriberOptions.transcription(preset: preset, autoPunctuation: false),
             reportingOptions: reporting,
             attributeOptions: preset.attributeOptions
         )

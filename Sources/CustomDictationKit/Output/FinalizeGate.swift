@@ -23,7 +23,6 @@ public struct FinalizeGate: Equatable, Sendable {
 public enum LiveInsertPath: String, Equatable, Sendable {
     case ax
     case hid
-    case imk
     case playground
     case skipped
 }

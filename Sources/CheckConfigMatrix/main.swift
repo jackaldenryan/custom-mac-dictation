@@ -7,8 +7,8 @@ import Foundation
 // Two properties the user explicitly wants are measured, not just asserted:
 //   - showedLive: dictated text appears BEFORE the phrase is finalized
 //     (a live partial wrote something visible)
-//   - underlined: the live text carries a mark (AX selection highlight or
-//     IMK marked text) rather than plain typed characters
+//   - underlined: the live text carries a mark (AX selection highlight)
+//     rather than plain typed characters
 // Everything else (final text, flicker, caret, safety) is pass/fail.
 
 struct MatrixScenario {
@@ -140,7 +140,7 @@ func run(_ s: MatrixScenario, _ config: InsertConfig) -> Run {
         // Observe the FIRST partial: did anything appear, and is it marked?
         config.apply(shaped: first, keepSelected: true, to: field)
         showedLive = !field.displayed.isEmpty
-        underlined = field.len > 0 && (field.lastPath == .ax || field.lastPath == .imk)
+        underlined = field.len > 0 && (field.lastPath == .ax)
         pathOnPartial = field.lastPath.rawValue
         for p in s.partials.dropFirst() {
             config.apply(shaped: p, keepSelected: true, to: field)
@@ -191,14 +191,13 @@ print("")
 print("=== totals (n=\(scenarios.count)) ===")
 for c in configs {
     let t = totals[c.id]!
-    print("\(c.id.padding(toLength: 13, withPad: " ", startingAt: 0)) final-correct \(t.final)/\(scenarios.count)  no-flicker \(t.flicker)/\(scenarios.count)  safety \(t.skip)/\(scenarios.count)  live-shown \(t.live)/\(scenarios.count)  underlined \(t.under)/\(scenarios.count)  keystrokes \(t.keys) (HID path only; AX/IMK are atomic)")
+    print("\(c.id.padding(toLength: 13, withPad: " ", startingAt: 0)) final-correct \(t.final)/\(scenarios.count)  no-flicker \(t.flicker)/\(scenarios.count)  safety \(t.skip)/\(scenarios.count)  live-shown \(t.live)/\(scenarios.count)  underlined \(t.under)/\(scenarios.count)  keystrokes \(t.keys) (HID path only; AX writes are atomic)")
 }
 print("")
 print("=== static trade-offs ===")
 for c in configs {
     let t = c.tradeoffs
     print("- \(c.title)")
-    print("  ax-permission=\(t.requiresAccessibilityPermission ? "yes" : "no") input-source-install+select=\(t.requiresInputSourceInstallAndSelect ? "YES (friction)" : "no") macOS26-classic-IMK-listed=\(t.macOS26ClassicIMKListed ? "n/a" : "NO (blocker)") clicks/keys-still-need-AX=\(t.stillNeedsAXForClicksAndKeys ? "yes" : "no")")
     print("  coverage: \(t.coverage)")
     print("  underline: \(t.underline)")
 }

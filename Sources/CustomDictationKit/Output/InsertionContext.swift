@@ -31,9 +31,6 @@ public struct CaretSnapshot: Equatable, Sendable {
 
 public enum InsertionContext {
     public static func snapshot() -> CaretSnapshot? {
-        if let snap = DictationTextInput.current.caretSnapshot() {
-            return snap
-        }
         guard AXIsProcessTrusted() else { return nil }
         let system = AXUIElementCreateSystemWide()
         var focused: CFTypeRef?

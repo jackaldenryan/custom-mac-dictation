@@ -12,8 +12,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         session: ListeningSession,
         store: SettingsStore,
         updater: UpdateController,
-        onRunSetup: @escaping () -> Void = {},
-        onSetupInputSource: @escaping () -> Void = {}
+        onRunSetup: @escaping () -> Void = {}
     ) {
         NSApp.setActivationPolicy(.regular)
         if let window {
@@ -25,8 +24,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             session: session,
             store: store,
             updater: updater,
-            onRunSetup: onRunSetup,
-            onSetupInputSource: onSetupInputSource
+            onRunSetup: onRunSetup
         )
         let hosting = NSHostingController(rootView: root)
         hosting.sizingOptions = []
@@ -72,7 +70,6 @@ private struct AppRootView: View {
     let store: SettingsStore
     @ObservedObject var updater: UpdateController
     var onRunSetup: () -> Void = {}
-    var onSetupInputSource: () -> Void = {}
     @State private var settings: AppSettings = .default
     @State private var mics: [MicrophoneDevice] = []
     @State private var logText = ""
@@ -239,20 +236,6 @@ private struct AppRootView: View {
                 }
                 Section("Startup") {
                     Toggle("Open at login", isOn: launchBinding)
-                }
-                if AppRuntime.isLocalTest {
-                    Section("Typing") {
-                        Toggle("Use Input Method (IMK)", isOn: inputMethodBinding)
-                        Text("On: insertText like Voice Control. macOS 26 does not list our Input Method in Keyboard settings, so this usually cannot activate. Off: Accessibility, then keyboard events.")
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Section("Punctuation") {
-                    Toggle("Apple automatic punctuation", isOn: autoPunctuationBinding)
-                    Text("Off (default): punctuation only when you say it — \u{201C}period\u{201D}, \u{201C}comma\u{201D}, \u{201C}question mark\u{201D} — like Voice Control. On: Apple also guesses marks from pauses, which puts stray periods and question marks mid-sentence.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Section("Finish a phrase after") {
                     Toggle("Disable silence finalize", isOn: disableFinalizeBinding)
@@ -499,7 +482,7 @@ private struct AppRootView: View {
                 }
             }
             DisclosureGroup("Folder format", isExpanded: $showFormat) {
-                Text("commands/ and vocabulary/ are one JSON file each. delays.json holds pause times. settings.json holds microphone, login, and Apple automatic punctuation. See README.md in the folder.")
+                Text("commands/ and vocabulary/ are one JSON file each. delays.json holds pause times. settings.json holds microphone and login. See README.md in the folder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -685,41 +668,12 @@ private struct AppRootView: View {
         )
     }
 
-    private var autoPunctuationBinding: Binding<Bool> {
-        Binding(
-            get: { settings.appleAutoPunctuation },
-            set: { on in
-                settings.appleAutoPunctuation = on
-                persist()
-                if session.state == .listening {
-                    Task { await session.startListening() }
-                }
-            }
-        )
-    }
-
     private var disableFinalizeBinding: Binding<Bool> {
         Binding(
             get: { settings.disableFinalizeDelay },
             set: { on in
                 settings.disableFinalizeDelay = on
                 persist()
-            }
-        )
-    }
-
-    private var inputMethodBinding: Binding<Bool> {
-        Binding(
-            get: { settings.useInputMethod },
-            set: { on in
-                settings.useInputMethod = on
-                persist()
-                if on {
-                    DictationInputServer.start()
-                    if !InputSourceSetup.ensure() {
-                        onSetupInputSource()
-                    }
-                }
             }
         )
     }

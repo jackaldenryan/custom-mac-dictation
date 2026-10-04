@@ -245,7 +245,7 @@ public enum ConfigFolder {
 
     This folder is the source of truth for commands, vocabulary, delays, and other settings.
 
-     Path: `~/.custom-dictation-config` (local test builds use `~/.custom-dictation-config-local`)
+    Path: `~/.custom-dictation-config` (local test builds use `~/.custom-dictation-config-local`)
 
     Edit files here (or have an agent edit them). The app reloads on change. Import in the app replaces this folder. Export copies it.
 
@@ -263,7 +263,7 @@ public enum ConfigFolder {
 
     ## settings.json
 
-    Microphone, login, onboarding, and Apple automatic punctuation (`appleAutoPunctuation`, off by default: punctuation only when spoken).
+    Microphone, login, and onboarding.
 
     ## commands/
 
@@ -283,17 +283,17 @@ public enum ConfigFolder {
     }
     ```
 
-     `match`: `exact` | `prefix` | `keyPressGrammar` | `appSlot` | `clickGrammar`  
-     `when`: `always` (start/stop) | `listening`  
-     `action`: `startListening` `stopListening` `keyPressGrammar` `openApp` `quitApp` `quitFrontmost` `capitalize` `uppercase` `lowercase` `pasteText` `shortcut` `openFile` `click`
+    `match`: `exact` | `prefix` | `keyPressGrammar` | `appSlot` | `clickGrammar`  
+    `when`: `always` (start/stop) | `listening`  
+    `action`: `startListening` `stopListening` `keyPressGrammar` `openApp` `quitApp` `quitFrontmost` `capitalize` `uppercase` `lowercase` `pasteText` `shortcut` `openFile` `click`
 
-     Put `{app}` in a phrase with `match` `appSlot` and action `openApp` or `quitApp`. Example: `"open {app}"`.
+    Put `{app}` in a phrase with `match` `appSlot` and action `openApp` or `quitApp`. Example: `"open {app}"`.
 
-     For `click`, set `clickButton` to `left` or `right`, `clickTimes` (1, 2, or 3), and `modifierFlags` (same numbers as shortcuts). Example phrases: `command click`.
+    For `click`, set `clickButton` to `left` or `right`, `clickTimes` (1, 2, or 3), and `modifierFlags` (same numbers as shortcuts). Example phrases: `command click`.
 
-     Lower `priority` runs first among the same stage. User `exact` commands (priority 100) still beat press/open/quit.
+    Lower `priority` runs first among the same stage. User `exact` commands (priority 100) still beat press/open/quit.
 
-     Shipped defaults are `builtin.*.json`. Edit phrases, disable, or delete them. Restore built-ins in the app puts the shipped files back.
+    Shipped defaults are `builtin.*.json`. Edit phrases, disable, or delete them. Restore built-ins in the app puts the shipped files back.
 
     ## vocabulary/
 
@@ -352,44 +352,34 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var microphoneUID: String?
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
-     public var useInputMethod: Bool
-     public var appleAutoPunctuation: Bool
 
-     public init(_ settings: AppSettings) {
-         hasCompletedOnboarding = settings.hasCompletedOnboarding
-         microphoneUID = settings.microphoneUID
-         launchAtLogin = settings.launchAtLogin
-         preferredListeningState = settings.preferredListeningState
-         useInputMethod = settings.useInputMethod
-         appleAutoPunctuation = settings.appleAutoPunctuation
-     }
+    public init(_ settings: AppSettings) {
+        hasCompletedOnboarding = settings.hasCompletedOnboarding
+        microphoneUID = settings.microphoneUID
+        launchAtLogin = settings.launchAtLogin
+        preferredListeningState = settings.preferredListeningState
+    }
 
-     enum CodingKeys: String, CodingKey {
-         case hasCompletedOnboarding
-         case microphoneUID
-         case launchAtLogin
-         case preferredListeningState
-         case useInputMethod
-         case appleAutoPunctuation
-     }
+    enum CodingKeys: String, CodingKey {
+        case hasCompletedOnboarding
+        case microphoneUID
+        case launchAtLogin
+        case preferredListeningState
+    }
 
-     public init(from decoder: Decoder) throws {
-         let c = try decoder.container(keyedBy: CodingKeys.self)
-         hasCompletedOnboarding = try c.decode(Bool.self, forKey: .hasCompletedOnboarding)
-         microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID)
-         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
-         preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
-         useInputMethod = try c.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
-         appleAutoPunctuation = try c.decodeIfPresent(Bool.self, forKey: .appleAutoPunctuation) ?? false
-     }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hasCompletedOnboarding = try c.decode(Bool.self, forKey: .hasCompletedOnboarding)
+        microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID)
+        launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
+        preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
+    }
 
-     public func encode(to encoder: Encoder) throws {
-         var c = encoder.container(keyedBy: CodingKeys.self)
-         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
-         try c.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
-         try c.encode(launchAtLogin, forKey: .launchAtLogin)
-         try c.encode(preferredListeningState, forKey: .preferredListeningState)
-         try c.encode(useInputMethod, forKey: .useInputMethod)
-         try c.encode(appleAutoPunctuation, forKey: .appleAutoPunctuation)
-     }
- }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
+        try c.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
+        try c.encode(launchAtLogin, forKey: .launchAtLogin)
+        try c.encode(preferredListeningState, forKey: .preferredListeningState)
+    }
+}

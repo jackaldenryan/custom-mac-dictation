@@ -10,7 +10,7 @@ Build a second app that does not replace `/Applications/Custom Dictation.app` an
 
 That installs **Custom Dictation Local** to `/Applications` (not the released app). Config is `~/.custom-dictation-config-local`. Login items and update checks are off.
 
-Local app only: Listen → **Use Input Method (IMK)**. Off (default) is Accessibility then keyboard events. On macOS 26, Keyboard → Input Sources does not list classic IMK apps (only Apple `textinputmethod-services` extensions), so IMK usually cannot be selected. Clicks and “press the C key” still use Accessibility.
+Typing is Accessibility in native fields, keyboard events everywhere else. An Input Method (IMK) path was tried and removed in 0.1.40: macOS 26 does not list classic IMK apps in Keyboard → Input Sources, so it could never be selected.
 
 Enable **Custom Dictation Local** in System Settings → Privacy & Security → Accessibility (and Microphone). It is a different app from Custom Dictation. If it is not in the list, click + and choose it from Applications.
 
@@ -22,11 +22,15 @@ Do not use `./scripts/install-local.sh` for this. That overwrites Applications a
 
 Slack, Cursor, VS Code, OpenCode, Chrome, Safari pages and any Electron/Chromium/WebKit view answer AX text writes with success but apply them late or never, and the attempt moves the caret first. Falling back to keystrokes after that typed into the middle of earlier words (Oct 3: "hey guess what I don't know you tell me" in Slack came out "Hey, guess? I don't know you tell .me don't"). `Output/AXWritePolicy.swift` blocks AX writes there up front; `FieldEditor.write` restores the selection on any failed write and turns AX off for that app for the session; `PhrasePathLock` keeps a phrase on HID once it starts on HID. Regression: `slackLogReplay` in CheckLogic.
 
-## Apple automatic punctuation is off by default
+## Apple automatic punctuation is always off
 
-Setting `appleAutoPunctuation` (Listen → Punctuation, `settings.json` in the config folder). Off removes `.punctuation` from the DictationTranscriber options (`Recognition/TranscriberOptions.swift`): no marks guessed from pauses, spoken "period" / "comma" / "question mark" / "exclamation point" still convert. Check real-model behavior with `./scripts/probe-punctuation.sh` (speaks samples with `say`, transcribes each with it on and off via `swift run ProbeSpeech`).
+The DictationTranscriber runs without `.punctuation` (`Recognition/TranscriberOptions.swift`): no marks guessed from pauses; spoken "period" / "comma" / "question mark" / "exclamation point" still convert. It is not a setting: the typing logic assumes every mark was spoken, so turning Apple's guesses back on would bring back doubled and stray marks. Check real-model behavior with `./scripts/probe-punctuation.sh` (speaks samples with `say`, transcribes each with it on and off via `swift run ProbeSpeech`).
 
-Because every mark is now spoken, the app types every mark it gets. Removed in 0.1.40 because they only existed to undo Apple's guesses: dropping repeated boundary punctuation, the lone-punctuation pause setting, and stripping a trailing ". ? ..." when inserting mid-sentence. Kept: lowering Apple's segment-start capital mid-sentence (Apple still capitalizes each segment).
+Because every mark is spoken, the app types every mark it gets. Removed in 0.1.40 because they only existed to undo Apple's guesses: dropping repeated boundary punctuation, the lone-punctuation pause setting, and stripping a trailing ". ? ..." when inserting mid-sentence. Kept: lowering Apple's segment-start capital mid-sentence (Apple still capitalizes each segment).
+
+## Post-process is built in
+
+`Output/PostProcess.swift` (`DefaultPostProcess`) is the only post-process: capitals, spacing, mid-sentence fit. There is no Post-process tab or JavaScript config anymore (removed in 0.1.40); change behavior in code and cover it in CheckPhraseRules.
 
 ## Phrase / post-process rules
 
@@ -54,7 +58,7 @@ Or all four in parallel:
 ./scripts/check.sh
 ```
 
-CheckPhraseRules is the desired typing rules (spaces, capitals, spoken punctuation, acronyms). It can fail while you change the default post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, spoken punctuation). CheckConfigMatrix runs every insertion strategy (`releaseHID`, `axHID`, `imkOnly`, `imkFallback` in `Output/InsertConfig.swift`) through the same simulated fields and reports final-text, flicker, safety plus measured capabilities: live-shown (text before finalize) and underlined (mark vs plain keystrokes). The app Playground sidebar speaks into simulated boxes and logs raw speech, writes, timers, and path (AX/HID/IMK).
+CheckPhraseRules is the desired typing rules (spaces, capitals, spoken punctuation, acronyms). It can fail while you change the post-process. CheckLogic is the existing parser/command checks. CheckFieldScenarios is Notes/Slack/Cursor/browser field behavior (live mark, selection, stub, spoken punctuation). CheckConfigMatrix runs each insertion strategy (`releaseHID` = v0.1.39 baseline, `axHID` = current, in `Output/InsertConfig.swift`) through the same simulated fields and reports final-text, flicker, safety plus measured capabilities: live-shown (text before finalize) and underlined (mark vs plain keystrokes). The app Playground sidebar speaks into simulated boxes and logs raw speech, writes, timers, and path (AX/HID).
 
 ## Tests for every bug
 

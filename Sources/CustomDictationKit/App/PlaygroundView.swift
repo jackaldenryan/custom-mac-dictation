@@ -26,8 +26,6 @@ public struct PlaygroundView: View {
                 .frame(maxWidth: 280)
                 Text(target.isActive ? "Capturing" : "Click the field to capture")
                     .foregroundStyle(target.isActive ? .green : .secondary)
-                Text(LivePhrase.usesInputMethod() ? "IMK on" : "AX/HID")
-                    .foregroundStyle(.secondary)
                 if target.isActive {
                     FlashButton(title: "Stop capturing", doneTitle: "Stopped") {
                         NSApp.keyWindow?.makeFirstResponder(nil)

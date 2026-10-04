@@ -242,22 +242,17 @@ expect(!liveSource.contains("selectBackward"), "live phrase does not shift-selec
 expect(liveSource.contains("hidReplace"), "AX/HID path kept")
 expect(liveSource.contains("hidFallbackAllowed"), "Finder/sidebar never dictated")
 expect(liveSource.contains("commonPrefixKeepCount"), "HID suffix-diff revision")
-expect(liveSource.contains("Typist.typeText"), "HID types when IMK is off")
-expect(liveSource.contains("setMarkedText"), "live phrase uses marked text")
-expect(liveSource.contains("DictationTextInput"), "live phrase uses text input client")
-expect(liveSource.contains("usesInputMethod"), "IMK is a setting")
+expect(liveSource.contains("Typist.typeText"), "HID typing path")
 expect(liveSource.contains("shouldFinishAXMark"), "HID commit does not AX-finish")
 expect(!liveSource.contains("keepsTrailingPunctuation"), "Apple final may drop live trailing punct")
 let engineSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
 expect(engineSource.contains("noteFinal"), "final clears pending finalize")
 expect(engineSource.contains("FinalizeGate"), "speech uses finalize gate")
-expect(!AppSettings.default.useInputMethod, "IMK off by default")
  expect(!AppSettings.default.disableFinalizeDelay, "silence finalize on by default")
 expect(engineSource.contains("disableForcedFinalize"), "can skip silence finalize")
 expect(liveSource.contains("finishCommittedMark"), "commit always clears live mark")
 expect(LiveCommitPolicy.shouldFinishAXMark(.ax), "finish live mark after AX")
 expect(!LiveCommitPolicy.shouldFinishAXMark(.hid), "do not AX-finish after HID")
-expect(!LiveCommitPolicy.shouldFinishAXMark(.imk), "do not AX-finish after IMK")
 expect(!LiveCommitPolicy.shouldFinishAXMark(.skipped), "do not AX-finish when skipped")
 do {
     var gate = FinalizeGate()
@@ -271,48 +266,42 @@ do {
 }
 do {
     let hid = SimulatedField(box: .openCode, text: "hello world", loc: 0, len: 5)
-    hid.apply(shaped: "goodbye", keepSelected: false, useInputMethod: false)
+    hid.apply(shaped: "goodbye", keepSelected: false)
     expect(hid.text == "goodbyehello world", "HID inserts into OpenCode selection")
     expect(hid.lastPath == .hid, "OpenCode uses HID")
 }
 do {
     let hid = SimulatedField(box: .openCode, text: "")
-    hid.apply(shaped: "Testing testing?", keepSelected: true, useInputMethod: false)
-    hid.apply(shaped: "Testing testing", keepSelected: false, useInputMethod: false)
-    hid.apply(shaped: "?", keepSelected: false, useInputMethod: false)
+    hid.apply(shaped: "Testing testing?", keepSelected: true)
+    hid.apply(shaped: "Testing testing", keepSelected: false)
+    hid.apply(shaped: "?", keepSelected: false)
     expect(hid.text == "Testing testing?", "OpenCode leftover punct must not replace the phrase")
 }
 do {
     let hid = SimulatedField(box: .openCode, text: "aa bb", loc: 2, len: 0)
-    hid.apply(shaped: "XX", keepSelected: true, useInputMethod: false)
+    hid.apply(shaped: "XX", keepSelected: true)
     expect(hid.text == "aaXX bb", "HID insert stays at clicked caret")
     expect(hid.loc == 4, "HID caret stays after mid insert")
 }
 do {
-    let imk = SimulatedField(box: .openCode, text: "hello world", loc: 0, len: 5)
-    imk.apply(shaped: "goodbye", keepSelected: false, useInputMethod: true)
-    expect(imk.text == "goodbye world", "IMK replaces OpenCode selection")
-    expect(imk.lastPath == .imk, "OpenCode IMK path")
-}
-do {
     let notes = SimulatedField(box: .notes, text: "Hi", loc: 2, len: 0)
-    notes.apply(shaped: "there", keepSelected: false, useInputMethod: false)
+    notes.apply(shaped: "there", keepSelected: false)
     expect(notes.lastPath == .ax, "Notes uses AX")
     notes.finishIfNeeded()
     expect(notes.len == 0, "AX finish collapses selection")
 }
 do {
     let notes = SimulatedField(box: .notes, text: "")
-    notes.apply(shaped: "This is a test.", keepSelected: true, useInputMethod: false)
-    notes.apply(shaped: "This is a test", keepSelected: false, useInputMethod: false)
+    notes.apply(shaped: "This is a test.", keepSelected: true)
+    notes.apply(shaped: "This is a test", keepSelected: false)
     notes.finishIfNeeded()
     expect(notes.text == "This is a test", "Apple final replaces live trailing period")
 }
 do {
     let notes = SimulatedField(box: .notes, text: "")
-    notes.apply(shaped: "This is another test", keepSelected: true, useInputMethod: false)
+    notes.apply(shaped: "This is another test", keepSelected: true)
     expect(notes.len == 20, "live mark selected")
-    notes.apply(shaped: "This is another test", keepSelected: false, useInputMethod: false)
+    notes.apply(shaped: "This is another test", keepSelected: false)
     notes.finishIfNeeded()
     expect(notes.len == 0, "same-text commit clears highlight")
     expect(notes.text == "This is another test", "same-text commit keeps words")
@@ -324,25 +313,22 @@ do {
 }
 do {
     let hid = SimulatedField(box: .slack, text: "ab", loc: 2, len: 0)
-    hid.apply(shaped: "cd", keepSelected: false, useInputMethod: false)
+    hid.apply(shaped: "cd", keepSelected: false)
     hid.finishIfNeeded()
     expect(hid.text == "abcd", "HID slack append")
 }
 do {
     let finderHid = SimulatedField(box: .finder, text: "")
-    finderHid.apply(shaped: "hello", keepSelected: false, useInputMethod: false)
+    finderHid.apply(shaped: "hello", keepSelected: false)
     expect(finderHid.text == "", "Finder AX/HID skips")
     expect(finderHid.lastPath == .skipped, "Finder skip path")
     let finderRelease = SimulatedField(box: .finder, text: "")
-    finderRelease.apply(shaped: "hello", keepSelected: false, useInputMethod: false, forceHID: true)
+    finderRelease.apply(shaped: "hello", keepSelected: false, forceHID: true)
     expect(finderRelease.text == "hello", "release-HID model still types in Finder")
-    let finderImk = SimulatedField(box: .finder, text: "")
-    finderImk.apply(shaped: "hello", keepSelected: false, useInputMethod: true)
-    expect(finderImk.text == "", "Finder IMK skips")
 }
 do {
     let sidebar = SimulatedField(box: .notesSidebar, text: "All iCloud", loc: 0, len: 0)
-    sidebar.apply(shaped: "Hello", keepSelected: true, useInputMethod: false)
+    sidebar.apply(shaped: "Hello", keepSelected: true)
     expect(sidebar.text == "All iCloud", "Notes sidebar AX/HID skips")
     expect(sidebar.lastPath == .skipped, "sidebar skip path")
 }
@@ -350,9 +336,9 @@ do {
     // Suffix-diff revision: "reciept" -> "receipt" shares "rec", so 4
     // backspaces + 4 retypes instead of 7 + 7.
     let slack = SimulatedField(box: .slack, text: "")
-    slack.apply(shaped: "reciept", keepSelected: true, useInputMethod: false)
-    slack.apply(shaped: "receipt", keepSelected: true, useInputMethod: false)
-    slack.apply(shaped: "receipt", keepSelected: false, useInputMethod: false)
+    slack.apply(shaped: "reciept", keepSelected: true)
+    slack.apply(shaped: "receipt", keepSelected: true)
+    slack.apply(shaped: "receipt", keepSelected: false)
     expect(slack.text == "receipt", "HID suffix-diff keeps the words")
     expect(slack.deletedUnits == 4, "HID suffix-diff deletes only the tail")
     expect(slack.insertedUnits == 7 + 4, "HID suffix-diff retypes only the tail")
@@ -369,16 +355,16 @@ do {
 // "Hey, guess? I don't know you tell .me don't". Phrases must only append.
 func slackLogReplay(_ field: SimulatedField) {
     for p in ["Hey, guess", "Hey, guess what", "Hey, guess what?"] {
-        field.apply(shaped: p, keepSelected: true, useInputMethod: false)
+        field.apply(shaped: p, keepSelected: true)
     }
-    field.apply(shaped: "Hey, guess what", keepSelected: false, useInputMethod: false)
-    field.apply(shaped: "?", keepSelected: false, useInputMethod: false)
+    field.apply(shaped: "Hey, guess what", keepSelected: false)
+    field.apply(shaped: "?", keepSelected: false)
     for p in [" I", " I don't", " I don't know", " I don't know you", " I don't know you tell",
               " I don't know you tell me", " I don't know you tell me."] {
-        field.apply(shaped: p, keepSelected: true, useInputMethod: false)
+        field.apply(shaped: p, keepSelected: true)
     }
-    field.apply(shaped: " I don't know you tell me", keepSelected: false, useInputMethod: false)
-    field.apply(shaped: ".", keepSelected: false, useInputMethod: false)
+    field.apply(shaped: " I don't know you tell me", keepSelected: false)
+    field.apply(shaped: ".", keepSelected: false)
 }
 do {
     let want = "Hey, guess what? I don't know you tell me."
@@ -414,23 +400,6 @@ do {
     expect(!liveSource.contains("FieldEditor.hasSelection()"), "no AX-guessed backspace before HID typing")
 }
 expect(FieldBox.allCases.contains(.openCode), "opencode box exists")
-expect(
-    InputSourceSetup.shouldPrompt(InputSourceState(installed: false, enabled: false, selected: false)),
-    "missing input source prompts"
-)
-expect(
-    !InputSourceSetup.shouldPrompt(InputSourceState(installed: true, enabled: true, selected: true)),
-    "ready input source skips prompt"
-)
-expect(
-    InputSourceSetup.shouldPrompt(InputSourceState(installed: true, enabled: true, selected: false)),
-    "installed but not selected prompts"
-)
-expect(
-    InputSourceSetup.shouldPrompt(InputSourceState(installed: true, enabled: false, selected: false)),
-    "disabled input source prompts"
-)
-expect(LivePhrase.usesInputMethod() == false || DictationTextInput.override != nil, "default path is AX/HID")
 expect(!typistSource.contains("typeViaSystemEvents"), "do not type via System Events")
 let fieldSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
 expect(fieldSource.contains("caretStillInMark"), "stale live mark rejected")
@@ -438,23 +407,9 @@ expect(fieldSource.contains("restoreSelection"), "failed AX write puts the caret
 expect(fieldSource.contains("markUntrusted"), "app with an unconfirmed AX write goes HID-only")
 expect(fieldSource.contains("axWritesAllowed"), "AX writes gated by AXWritePolicy")
 let infoPlist = try! String(contentsOf: repo.appendingPathComponent("Resources/Info.plist"), encoding: .utf8)
-expect(infoPlist.contains("InputMethodConnectionName"), "app is an input method")
-expect(infoPlist.contains("DictationInputController"), "IMK controller class")
-expect(infoPlist.contains("tsVisibleInputModeOrderedArrayKey"), "input mode is listed")
-expect(infoPlist.contains("TISInputSourceID"), "TIS input source id")
-expect(infoPlist.contains("TISIntendedLanguage"), "TIS language")
-expect(
-    InputSourceSetup.inputMethodsURL(appName: "Custom Dictation Local", home: URL(fileURLWithPath: "/Users/test")).path
-        == "/Users/test/Library/Input Methods/Custom Dictation Local.app",
-    "input method install path"
-)
+expect(!infoPlist.contains("InputMethodConnectionName"), "not an input method (IMK removed in 0.1.40)")
 let runLocal = try! String(contentsOf: repo.appendingPathComponent("scripts/run-local.sh"), encoding: .utf8)
-expect(runLocal.contains("Library/Input Methods"), "local install copies into Input Methods")
-let imkSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/IMKSession.swift"), encoding: .utf8)
-expect(imkSource.contains("IMKInputController"), "IMK input controller")
-expect(imkSource.contains("insertText"), "IMK insertText")
-expect(imkSource.contains("setMarkedText"), "IMK setMarkedText")
-expect(imkSource.contains("return false"), "keyboard keys pass through")
+expect(!runLocal.contains("Input Methods"), "local install no longer copies into Input Methods")
 
 expect(ClickGrammar.parse("double click")?.times == 2, "double click")
 expect(ClickGrammar.parse("triple click")?.times == 3, "triple click")
@@ -509,89 +464,6 @@ expect(Permissions.shouldShowSetup(hasCompletedOnboarding: true, accessibilityGr
 expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityGranted: true, microphoneAuthorized: true), "first launch shows setup")
 expect(Permissions.shouldShowSetup(hasCompletedOnboarding: false, accessibilityGranted: false, microphoneAuthorized: false), "nothing granted shows setup")
 
-do {
-    let doc = MemoryTextInput(text: "Hello world", location: 6, length: 5)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    expect(doc.isAvailable, "memory client available")
-    doc.insertText("there")
-    expect(doc.text == "Hello there", "insertText replaces selection")
-    expect(doc.location == 11, "caret after insert")
-}
-
-do {
-    let doc = MemoryTextInput(text: "", location: 0, length: 0)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    doc.setMarkedText("Hel")
-    doc.setMarkedText("Hello")
-    expect(doc.text == "Hello", "marked text replaces mark not append")
-    doc.insertText("Hello")
-    expect(doc.text == "Hello", "insert commits marked text")
-}
-
-do {
-    let doc = MemoryTextInput(text: "Documents", location: 0, length: 0, isAvailable: false)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    doc.insertText("hello")
-    doc.setMarkedText("hello")
-    expect(doc.text == "Documents", "no client does not type")
-}
-
-do {
-    let doc = MemoryTextInput(text: "hello world", location: 6, length: 5)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    expect(doc.selectedString() == "world", "selected string")
-    try SelectionTransform.apply(.uppercase)
-    expect(doc.text == "hello WORLD", "uppercase via text client")
-}
-
-do {
-    let doc = MemoryTextInput(text: "hello", location: 5, length: 0)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    var failed = false
-    do {
-        try SelectionTransform.apply(.uppercase)
-    } catch {
-        failed = true
-    }
-    expect(failed, "uppercase with no selection fails")
-    expect(doc.text == "hello", "no selection leaves text")
-}
-
-do {
-    let doc = MemoryTextInput(text: "", location: 0, length: 0)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    expect(LivePhrase.usesInputMethod(), "override forces IMK")
-    LivePhrase.displayed = ""
-    LivePhrase.pendingLeadSpace = false
-    LivePhrase.show("Hello")
-    LivePhrase.show("Hello world")
-    LivePhrase.commit("Hello world")
-    expect(doc.text == "Hello world", "live phrase through text client")
-}
-
-do {
-    LivePhrase.useInputMethodOverride = false
-    DictationTextInput.override = nil
-    defer { LivePhrase.useInputMethodOverride = nil }
-    expect(!LivePhrase.usesInputMethod(), "override off is AX/HID")
-}
-
-do {
-    let doc = MemoryTextInput(text: "sidebar", location: 0, length: 0, isAvailable: false)
-    DictationTextInput.override = doc
-    defer { DictationTextInput.override = nil }
-    LivePhrase.displayed = ""
-    LivePhrase.show("Hello")
-    LivePhrase.commit("Hello")
-    expect(doc.text == "sidebar", "live phrase skips when no client")
-}
-
 // Spoken punctuation is always typed (Apple automatic punctuation off).
 // Regression for "saying question mark after an existing ? does nothing":
 // the old boundary-punctuation filter dropped any mark that followed a mark
@@ -639,35 +511,29 @@ do {
     expect(playground.field.text == "Working now.", "mid-sentence keeps spoken period (got \(String(reflecting: playground.field.text)))")
 }
 
-// Apple automatic punctuation is off by default (Oct 3): its pause guesses
-// put "?" and "." mid-sentence ("or is it just? Something"). Spoken
-// punctuation still works with it off: scripts/probe-punctuation.sh speaks
-// "hello comma how are you question mark" and gets "Hello, how are you?".
+// Apple automatic punctuation is always off (0.1.40): its pause guesses put
+// "?" and "." mid-sentence ("or is it just? Something"), and the typing
+// logic assumes every mark was spoken. scripts/probe-punctuation.sh checks
+// that spoken punctuation still converts ("hello comma how are you question
+// mark" -> "Hello, how are you?").
 do {
-    expect(!AppSettings.default.appleAutoPunctuation, "Apple auto punctuation off by default")
     let preset = DictationTranscriber.Preset.progressiveLongDictation
     expect(!TranscriberOptions.transcription(preset: preset, autoPunctuation: false).contains(.punctuation),
            "auto punctuation off removes .punctuation")
     expect(TranscriberOptions.transcription(preset: preset, autoPunctuation: true).contains(.punctuation),
-           "auto punctuation on keeps .punctuation")
-    let old = #"{"hasCompletedOnboarding":true,"launchAtLogin":false}"#.data(using: .utf8)!
-    let decoded = try! JSONDecoder().decode(AppSettings.self, from: old)
-    expect(!decoded.appleAutoPunctuation, "settings saved before the toggle existed decode as off")
-    var on = AppSettings.default
-    on.appleAutoPunctuation = true
-    let roundTrip = try! JSONDecoder().decode(AppSettings.self, from: try! JSONEncoder().encode(on))
-    expect(roundTrip.appleAutoPunctuation, "auto punctuation setting round-trips")
+           "probe can still turn it on")
     let engine = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
-    expect(engine.contains("TranscriberOptions.transcription"), "engine builds options from the setting")
-    expect(!engine.contains(".union([.punctuation])"), "engine never forces auto punctuation on")
-    expect(engine.contains("lastAutoPunctuation == autoPunctuation"), "toggling rebuilds the transcriber")
+    expect(engine.contains("TranscriberOptions.transcription(preset: preset, autoPunctuation: false)"), "app always runs with auto punctuation off")
+    let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)
+    expect(!window.contains("automatic punctuation"), "no auto punctuation toggle (it would bring back doubled marks)")
+    expect(!window.contains("Input Method"), "no IMK toggle")
 }
 
 
 do {
     // Settings saved by older versions (post-process configs, pause delay)
     // still load; the removed keys are ignored.
-    let old = #"{"hasCompletedOnboarding":true,"postProcessOnlyOnFinal":true,"activePostProcessID":"x","postProcessConfigs":[],"lonePunctuationDelaySeconds":2,"punctuationModes":{}}"#.data(using: .utf8)!
+    let old = #"{"hasCompletedOnboarding":true,"postProcessOnlyOnFinal":true,"activePostProcessID":"x","postProcessConfigs":[],"lonePunctuationDelaySeconds":2,"punctuationModes":{},"useInputMethod":true,"appleAutoPunctuation":true}"#.data(using: .utf8)!
     let decoded = try? JSONDecoder().decode(AppSettings.self, from: old)
     expect(decoded?.hasCompletedOnboarding == true, "old settings with removed keys still decode")
     let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)

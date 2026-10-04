@@ -26,9 +26,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if AppRuntime.isLocalTest || SettingsStore.shared.settings.useInputMethod {
-            DictationInputServer.start()
-        }
         installMainMenu()
         if AppRuntime.isLocalTest {
             _ = Permissions.accessibilityGranted(prompt: true)
@@ -141,16 +138,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updater: updater,
             onRunSetup: { [weak self] in
                 self?.showSetup()
-            },
-            onSetupInputSource: { [weak self] in
-                self?.showInputSourceSetup()
             }
         )
-    }
-
-    private func showInputSourceSetup() {
-        NSApp.setActivationPolicy(.regular)
-        onboarding.show(session: session, store: store, onlyInputSource: true) {}
     }
 
     private func presentStatusItem() {

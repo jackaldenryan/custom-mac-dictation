@@ -13,14 +13,6 @@ public enum SelectionTransform {
     }
 
     public static func apply(_ kind: Kind) throws {
-        if LivePhrase.usesInputMethod() {
-            let client = DictationTextInput.current
-            guard let raw = client.selectedString(), !raw.isEmpty else {
-                throw SelectionTransformError.nothingSelected
-            }
-            client.insertText(transform(raw, kind: kind))
-            return
-        }
         if let raw = FieldEditor.selectedString(), !raw.isEmpty {
             if FieldEditor.replaceSelection(transform(raw, kind: kind)) {
                 return

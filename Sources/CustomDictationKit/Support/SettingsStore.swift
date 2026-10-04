@@ -91,11 +91,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var preferredListeningState: ListeningState
     public var finalizeDelaySeconds: Double
     public var keyRepeatDelaySeconds: Double
-     public var disableFinalizeDelay: Bool
-    public var useInputMethod: Bool
-    /// Apple's automatic punctuation. Off: marks only from spoken
-    /// punctuation ("period", "comma"), no guesses at pauses.
-    public var appleAutoPunctuation: Bool
+    public var disableFinalizeDelay: Bool
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
@@ -110,9 +106,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             preferredListeningState: .off,
             finalizeDelaySeconds: defaultFinalizeDelaySeconds,
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
-             disableFinalizeDelay: false,
-            useInputMethod: false,
-            appleAutoPunctuation: false
+            disableFinalizeDelay: false
         )
     }
 
@@ -125,9 +119,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case preferredListeningState
         case finalizeDelaySeconds
         case keyRepeatDelaySeconds
-         case disableFinalizeDelay
-        case useInputMethod
-        case appleAutoPunctuation
+        case disableFinalizeDelay
     }
 
     public init(
@@ -139,9 +131,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         preferredListeningState: ListeningState,
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
-         disableFinalizeDelay: Bool = false,
-        useInputMethod: Bool = false,
-        appleAutoPunctuation: Bool = false
+        disableFinalizeDelay: Bool = false
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphoneUID = microphoneUID
@@ -151,9 +141,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.preferredListeningState = preferredListeningState
         self.finalizeDelaySeconds = Self.clampedFinalizeDelay(finalizeDelaySeconds)
         self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
-         self.disableFinalizeDelay = disableFinalizeDelay
-        self.useInputMethod = useInputMethod
-        self.appleAutoPunctuation = appleAutoPunctuation
+        self.disableFinalizeDelay = disableFinalizeDelay
     }
 
     public init(from decoder: Decoder) throws {
@@ -176,9 +164,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(
             try container.decodeIfPresent(Double.self, forKey: .keyRepeatDelaySeconds) ?? Self.defaultKeyRepeatDelaySeconds
         )
-         disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
-        useInputMethod = try container.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
-        appleAutoPunctuation = try container.decodeIfPresent(Bool.self, forKey: .appleAutoPunctuation) ?? false
+        disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -191,9 +177,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(preferredListeningState, forKey: .preferredListeningState)
         try container.encode(finalizeDelaySeconds, forKey: .finalizeDelaySeconds)
         try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
-         try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
-        try container.encode(useInputMethod, forKey: .useInputMethod)
-        try container.encode(appleAutoPunctuation, forKey: .appleAutoPunctuation)
+        try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
     }
 
     public static func clampedFinalizeDelay(_ seconds: Double) -> Double {
@@ -264,10 +248,8 @@ public final class SettingsStore: @unchecked Sendable {
             cached.microphoneUID = prefs.microphoneUID
             cached.launchAtLogin = prefs.launchAtLogin
             cached.preferredListeningState = prefs.preferredListeningState
-             cached.useInputMethod = prefs.useInputMethod
-             cached.appleAutoPunctuation = prefs.appleAutoPunctuation
-         }
-     }
+        }
+    }
 
     public var settings: AppSettings {
         queue.sync { cached }

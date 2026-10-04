@@ -69,10 +69,8 @@ public final class ListeningSession: ObservableObject {
                 vocabulary: settings.vocabulary.filter(\.enabled),
                 commandPhrases: settings.commands.filter(\.enabled).flatMap(\.phrases).map {
                     $0.replacingOccurrences(of: " {app}", with: "").replacingOccurrences(of: "{app}", with: "")
-                } + AppNameResolver.commandPhrases(),
-                autoPunctuation: settings.appleAutoPunctuation
+                } + AppNameResolver.commandPhrases()
             )
-            DiagnosticLog.line("Apple auto punctuation \(settings.appleAutoPunctuation ? "on" : "off")")
             guard generation == startGeneration else { return }
             DiagnosticLog.line("Listening")
         } catch {

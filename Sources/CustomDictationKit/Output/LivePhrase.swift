@@ -4,7 +4,6 @@ import Foundation
 public enum LivePhrase {
     nonisolated(unsafe) public static var displayed = ""
     nonisolated(unsafe) public static var pendingLeadSpace = false
-    nonisolated(unsafe) public static var useInputMethodOverride: Bool?
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
     nonisolated(unsafe) private static var lastInsertPath = LiveInsertPath.skipped
@@ -17,12 +16,6 @@ public enum LivePhrase {
     /// Cleared by commands.
     nonisolated(unsafe) private static var lastTypedTail: Character?
     nonisolated(unsafe) private static var lastTypedApp: String?
-
-    public static func usesInputMethod() -> Bool {
-        if DictationTextInput.override != nil { return true }
-        if let override = useInputMethodOverride { return override }
-        return SettingsStore.shared.settings.useInputMethod
-    }
 
     public static func show(_ text: String) {
         let out = shaped(text)
@@ -43,9 +36,7 @@ public enum LivePhrase {
         apply("", keepSelected: false)
         displayed = ""
         phrasePath = nil
-        if !usesInputMethod() {
-            FieldEditor.clearLive()
-        }
+        FieldEditor.clearLive()
     }
 
     public static func noteCommand() {
@@ -87,10 +78,6 @@ public enum LivePhrase {
             PlaygroundTarget.shared.collapseLive()
             return
         }
-        if usesInputMethod() {
-            DictationTextInput.current.unmarkText()
-            return
-        }
         if LiveCommitPolicy.shouldFinishAXMark(lastInsertPath) {
             FieldEditor.finishLive()
         }
@@ -98,11 +85,7 @@ public enum LivePhrase {
 
     private static func shaped(_ text: String) -> String {
         if displayed.isEmpty {
-            if usesInputMethod() {
-                phraseSnapshot = DictationTextInput.current.caretSnapshot() ?? InsertionContext.snapshot()
-            } else {
-                phraseSnapshot = InsertionContext.snapshot()
-            }
+            phraseSnapshot = InsertionContext.snapshot()
             if let app = lastTypedApp, app != frontAppID() {
                 // New app, new field: nothing we typed sits before this
                 // caret, so no lead space.
@@ -136,27 +119,7 @@ public enum LivePhrase {
             displayed = lastInsertPath == .skipped ? "" : text
             return
         }
-        if usesInputMethod() {
-            applyInputMethod(text, keepSelected: keepSelected)
-            return
-        }
         applyAXHid(text, keepSelected: keepSelected)
-    }
-
-    private static func applyInputMethod(_ text: String, keepSelected: Bool) {
-        let client = DictationTextInput.current
-        guard client.isAvailable else {
-            DiagnosticLog.line("Live phrase skipped; no text input client")
-            displayed = ""
-            return
-        }
-        if keepSelected, !text.isEmpty {
-            client.setMarkedText(text)
-        } else {
-            client.insertText(text)
-        }
-        lastInsertPath = .imk
-        displayed = text
     }
 
     private static func applyAXHid(_ text: String, keepSelected: Bool) {
@@ -208,8 +171,6 @@ public enum LivePhrase {
     /// Electron apps need HID (their fields are often invisible to AX), but
     /// Finder has no insertion point at all and the Notes sidebar is not a
     /// text field, so dictating there renames files or mangles the sidebar.
-    /// The IMK path already skips these via client availability; this is the
-    /// AX/HID equivalent.
     private static func hidFallbackAllowed() -> Bool {
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         if front == "com.apple.finder" { return false }

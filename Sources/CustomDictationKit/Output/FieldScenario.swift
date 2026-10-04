@@ -70,7 +70,7 @@ public final class SimulatedField: @unchecked Sendable {
     public var lastPath = LiveInsertPath.skipped
     public var displayed = ""
     /// Keystroke estimate for the HID path (inserted + deleted UTF-16
-    /// units). AX/IMK writes are atomic and count nothing: that gap is the
+    /// units). AX writes are atomic and count nothing: that gap is the
     /// performance story this measures (fewer events = faster Slack).
     public var insertedUnits = 0
     public var deletedUnits = 0
@@ -93,7 +93,7 @@ public final class SimulatedField: @unchecked Sendable {
         self.axReportedLoc = self.loc
     }
 
-    public func apply(shaped: String, keepSelected: Bool, useInputMethod: Bool, forceHID: Bool = false) {
+    public func apply(shaped: String, keepSelected: Bool, forceHID: Bool = false) {
         let p = profile
         if p.stubFocused {
             intoStub = true
@@ -101,23 +101,12 @@ public final class SimulatedField: @unchecked Sendable {
             displayed = ""
             return
         }
-        // Mirrors LivePhrase.hidFallbackAllowed: the AX/HID path skips apps
-        // with nowhere to type (Finder, Notes sidebar). The release-HID
-        // model (forceHID) keeps the shipped behavior for comparison.
+        // Mirrors LivePhrase.hidFallbackAllowed: skip apps with nowhere to
+        // type (Finder, Notes sidebar). The release-HID model (forceHID)
+        // keeps the v0.1.39 behavior for comparison.
         if !forceHID, !p.hasClient {
             lastPath = .skipped
             displayed = ""
-            return
-        }
-        if useInputMethod, !forceHID {
-            if !p.hasClient {
-                lastPath = .skipped
-                displayed = ""
-                return
-            }
-            replaceMark(with: shaped, select: keepSelected && !shaped.isEmpty)
-            lastPath = .imk
-            rememberDisplayed(shaped, keepSelected: keepSelected)
             return
         }
         if p.axWrite, !forceHID {
