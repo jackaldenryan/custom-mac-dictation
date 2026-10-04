@@ -259,6 +259,11 @@ public final class SpeechEngine: @unchecked Sendable {
             + "\n" + phrases.joined(separator: "\n")
     }
 
+    /// End the current segment now (Apple sends its final right away).
+    public func finalizeNow() async {
+        await finalizeThroughLatest()
+    }
+
     private func finalizeThroughLatest() async {
         finalizeGate.noteFinal()
         guard let analyzer else { return }

@@ -568,4 +568,32 @@ do {
            "\"click mouse\" clicks")
 }
 
+// Commands run from live text once it is a whole command and has been
+// stable for EarlyCommand.settleSeconds, instead of waiting 1-2 s for
+// Apple's final (Oct 3: "open slack", "capitalize that" felt slow). The
+// final that follows must not run or type the command a second time.
+do {
+    let s = AppSettings.default
+    expect(Router.isEarlyCommand(transcript: "capitalize that", state: .listening, settings: s), "capitalize that runs early")
+    expect(Router.isEarlyCommand(transcript: "press the down key", state: .listening, settings: s), "key press runs early")
+    expect(Router.isEarlyCommand(transcript: "command click", state: .listening, settings: s), "click grammar runs early")
+    expect(!Router.isEarlyCommand(transcript: "capitalize that", state: .suspended, settings: s), "nothing early while paused")
+    expect(!Router.isEarlyCommand(transcript: "hello there", state: .listening, settings: s), "dictation never runs early")
+    expect(!Router.isEarlyCommand(transcript: "open zzqqxx", state: .listening, settings: s), "open with no matching app waits for the final")
+    if AppNameResolver.resolve("finder") != nil {
+        expect(Router.isEarlyCommand(transcript: "open finder", state: .listening, settings: s), "open an installed app runs early")
+    }
+    expect(EarlyCommand.settleSeconds <= 0.5, "early commands feel instant")
+    let now = Date()
+    let ran = EarlyCommand.Ran(normalized: "open slack", at: now)
+    expect(EarlyCommand.resolveFinal("open Slack", ran: ran, now: now) == .skip, "final of an early command is skipped")
+    expect(EarlyCommand.resolveFinal("Open slack.", ran: ran, now: now) == .skip, "case and punctuation ignored")
+    expect(EarlyCommand.resolveFinal("open snack", ran: ran, now: now) == .skip, "reworded same-length final is not typed")
+    expect(EarlyCommand.resolveFinal("open Slack and then type hello", ran: ran, now: now) == .route("and then type hello"), "words after the command still route")
+    expect(EarlyCommand.resolveFinal("open Slack", ran: nil, now: now) == .route("open Slack"), "no early command: normal route")
+    expect(EarlyCommand.resolveFinal("open Slack", ran: ran, now: now.addingTimeInterval(30)) == .route("open Slack"), "stale early command does not swallow a later one")
+    let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(session.contains("Router.isEarlyCommand") && session.contains("EarlyCommand.resolveFinal"), "session runs commands early and skips their final")
+}
+
 print("CheckLogic passed")

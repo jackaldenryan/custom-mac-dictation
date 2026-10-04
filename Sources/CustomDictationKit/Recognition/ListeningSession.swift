@@ -21,6 +21,9 @@ public final class ListeningSession: ObservableObject {
     private let store: SettingsStore
     private var startGeneration = 0
     private var lastMicrophoneUID: String?
+    private var earlyCommandTask: Task<Void, Never>?
+    private var earlyCommandText = ""
+    private var ranEarly: EarlyCommand.Ran?
 
     public init(store: SettingsStore = .shared) {
         self.store = store
@@ -137,12 +140,37 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handlePartial(_ text: String) {
+        let repeated = text == lastPartial
         lastPartial = text
+        // Apple can resend the same live text; that must not restart the wait.
+        if !(repeated && text == earlyCommandText) {
+            earlyCommandTask?.cancel()
+            earlyCommandText = ""
+        }
         guard state == .listening else { return }
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
+            if earlyCommandText != text, Router.isEarlyCommand(transcript: text, state: state, settings: store.settings) {
+                scheduleEarlyCommand(text)
+            }
             return
         }
         LivePhrase.show(text)
+    }
+
+    /// Commands used to wait for Apple's final, 1-2 s after you stop
+    /// talking. A live transcript that is already a whole command runs once
+    /// it has been stable for `EarlyCommand.settleSeconds`; its final is
+    /// then skipped (see EarlyCommand.resolveFinal).
+    private func scheduleEarlyCommand(_ text: String) {
+        earlyCommandText = text
+        earlyCommandTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Int(EarlyCommand.settleSeconds * 1000)))
+            guard !Task.isCancelled, let self, self.state == .listening, self.lastPartial == text else { return }
+            self.ranEarly = EarlyCommand.Ran(normalized: TranscriptNormalizer.normalize(text), at: Date())
+            DiagnosticLog.line("Command from live text (not waiting for final) text=\(text)")
+            self.route(text)
+            await self.engine.finalizeNow()
+        }
     }
 
     private func clearStaleHearing() {
@@ -150,8 +178,23 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handle(transcript: String) {
-        lastFinal = transcript
+        earlyCommandTask?.cancel()
+        earlyCommandText = ""
         lastPartial = ""
+        let ran = ranEarly
+        ranEarly = nil
+        switch EarlyCommand.resolveFinal(transcript, ran: ran, now: Date()) {
+        case .skip:
+            lastFinal = transcript
+            DiagnosticLog.line("Route command (already ran from live text) text=\(transcript)")
+            return
+        case .route(let rest):
+            route(rest)
+        }
+    }
+
+    private func route(_ transcript: String) {
+        lastFinal = transcript
         let settings = store.settings
         let result = Router.handle(
             transcript: transcript,

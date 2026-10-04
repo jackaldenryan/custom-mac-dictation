@@ -18,31 +18,64 @@ public enum Router {
     ) -> RouteResult {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = TranscriptNormalizer.normalize(transcript)
-        let commands = settings.commands.filter(\.enabled)
-
-        if let command = firstMatch(normalized: normalized, transcript: transcript, commands: commands, when: .always) {
-            return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
+        if let picked = pick(normalized: normalized, transcript: transcript, state: state, settings: settings) {
+            if picked.discardLive { LivePhrase.discard() }
+            return run(picked.command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
         }
         if state != .listening {
             return .ignored
         }
 
-        let userExact = commands.filter { !$0.builtin && $0.match == .exact && $0.when == .listening }
-        if let command = bestExact(normalized: normalized, commands: userExact) {
-            LivePhrase.discard()
-            return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
-        }
-
-        let rest = commands.filter { $0.when == .listening && ($0.builtin || $0.match != .exact) }
-            .sorted { $0.priority < $1.priority }
-        if let command = firstMatch(normalized: normalized, transcript: transcript, commands: rest, when: .listening) {
-            LivePhrase.discard()
-            return run(command, transcript: transcript, normalized: normalized, state: state, settings: settings, onStartListening: onStartListening, onStopListening: onStopListening)
-        }
-
         guard !trimmed.isEmpty else { return .ignored }
         LivePhrase.commit(trimmed)
         return .typed
+    }
+
+    /// The command Router.handle would run for this transcript, if any.
+    private static func pick(
+        normalized: String,
+        transcript: String,
+        state: ListeningState,
+        settings: AppSettings
+    ) -> (command: CommandSpec, discardLive: Bool)? {
+        let commands = settings.commands.filter(\.enabled)
+        if let command = firstMatch(normalized: normalized, transcript: transcript, commands: commands, when: .always) {
+            return (command, false)
+        }
+        guard state == .listening else { return nil }
+        let userExact = commands.filter { !$0.builtin && $0.match == .exact && $0.when == .listening }
+        if let command = bestExact(normalized: normalized, commands: userExact) {
+            return (command, true)
+        }
+        let rest = commands.filter { $0.when == .listening && ($0.builtin || $0.match != .exact) }
+            .sorted { $0.priority < $1.priority }
+        if let command = firstMatch(normalized: normalized, transcript: transcript, commands: rest, when: .listening) {
+            return (command, true)
+        }
+        return nil
+    }
+
+    /// True when a live (not yet final) transcript is already a whole
+    /// command that can run now instead of waiting ~1-2 s for Apple's final.
+    /// Open-ended commands ("open X" with an X that is not an installed app
+    /// yet, or other prefix commands) never run early: the rest of the
+    /// phrase may still be coming.
+    public static func isEarlyCommand(transcript: String, state: ListeningState, settings: AppSettings) -> Bool {
+        guard state == .listening else { return false }
+        let normalized = TranscriptNormalizer.normalize(transcript)
+        guard !normalized.isEmpty,
+              let picked = pick(normalized: normalized, transcript: transcript, state: state, settings: settings)
+        else { return false }
+        let command = picked.command
+        switch command.match {
+        case .exact, .keyPressGrammar, .clickGrammar:
+            return true
+        case .appSlot, .prefix:
+            guard command.action == .openApp || command.action == .quitApp else { return false }
+            let fallback = command.action == .openApp ? "open " : "quit "
+            let name = command.appArgument(normalized: normalized) ?? argument(normalized, prefix: command.prefix ?? fallback)
+            return AppNameResolver.resolve(name) != nil
+        }
     }
 
     public static func shouldHoldLive(transcript: String, state: ListeningState, settings: AppSettings) -> Bool {
