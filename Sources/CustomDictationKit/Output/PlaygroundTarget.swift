@@ -91,6 +91,7 @@ public final class PlaygroundTarget: @unchecked Sendable, ObservableObject {
     public func collapseLive() {
         field.finishIfNeeded()
         field.len = 0
+        field.displayed = ""
         field.liveVisible = false
         text = field.text
         objectWillChange.send()

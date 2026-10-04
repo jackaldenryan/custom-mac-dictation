@@ -399,6 +399,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var preferredListeningState: ListeningState
      public var useInputMethod: Bool
      public var postProcessOnlyOnFinal: Bool
+     public var appleAutoPunctuation: Bool
 
      public init(_ settings: AppSettings) {
          hasCompletedOnboarding = settings.hasCompletedOnboarding
@@ -408,6 +409,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          preferredListeningState = settings.preferredListeningState
          useInputMethod = settings.useInputMethod
          postProcessOnlyOnFinal = settings.postProcessOnlyOnFinal
+         appleAutoPunctuation = settings.appleAutoPunctuation
      }
 
      enum CodingKeys: String, CodingKey {
@@ -418,6 +420,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          case preferredListeningState
          case useInputMethod
          case postProcessOnlyOnFinal
+         case appleAutoPunctuation
      }
 
      public init(from decoder: Decoder) throws {
@@ -429,6 +432,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
          useInputMethod = try c.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
          postProcessOnlyOnFinal = try c.decodeIfPresent(Bool.self, forKey: .postProcessOnlyOnFinal) ?? false
+         appleAutoPunctuation = try c.decodeIfPresent(Bool.self, forKey: .appleAutoPunctuation) ?? false
      }
 
      public func encode(to encoder: Encoder) throws {
@@ -440,6 +444,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
          try c.encode(preferredListeningState, forKey: .preferredListeningState)
          try c.encode(useInputMethod, forKey: .useInputMethod)
          try c.encode(postProcessOnlyOnFinal, forKey: .postProcessOnlyOnFinal)
+         try c.encode(appleAutoPunctuation, forKey: .appleAutoPunctuation)
      }
  }
 

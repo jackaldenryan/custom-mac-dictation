@@ -105,6 +105,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
      public var postProcessConfigs: [PostProcessConfig]
     public var activePostProcessID: String
     public var useInputMethod: Bool
+    /// Apple's automatic punctuation. Off: marks only from spoken
+    /// punctuation ("period", "comma"), no guesses at pauses.
+    public var appleAutoPunctuation: Bool
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
@@ -127,7 +130,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
              postProcessOnlyOnFinal: false,
              postProcessConfigs: [.builtInDefault],
             activePostProcessID: PostProcessConfig.defaultID,
-            useInputMethod: false
+            useInputMethod: false,
+            appleAutoPunctuation: false
         )
     }
 
@@ -148,6 +152,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
          case postProcessConfigs
         case activePostProcessID
         case useInputMethod
+        case appleAutoPunctuation
     }
 
     public init(
@@ -166,7 +171,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
          postProcessOnlyOnFinal: Bool = false,
          postProcessConfigs: [PostProcessConfig],
         activePostProcessID: String,
-        useInputMethod: Bool = false
+        useInputMethod: Bool = false,
+        appleAutoPunctuation: Bool = false
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphoneUID = microphoneUID
@@ -184,6 +190,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
          self.postProcessConfigs = postProcessConfigs
         self.activePostProcessID = activePostProcessID
         self.useInputMethod = useInputMethod
+        self.appleAutoPunctuation = appleAutoPunctuation
         ensurePostProcessDefaults()
     }
 
@@ -217,6 +224,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
          postProcessConfigs = try container.decodeIfPresent([PostProcessConfig].self, forKey: .postProcessConfigs) ?? [.builtInDefault]
         activePostProcessID = try container.decodeIfPresent(String.self, forKey: .activePostProcessID) ?? PostProcessConfig.defaultID
         useInputMethod = try container.decodeIfPresent(Bool.self, forKey: .useInputMethod) ?? false
+        appleAutoPunctuation = try container.decodeIfPresent(Bool.self, forKey: .appleAutoPunctuation) ?? false
         ensurePostProcessDefaults()
     }
 
@@ -238,6 +246,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
          try container.encode(postProcessConfigs, forKey: .postProcessConfigs)
         try container.encode(activePostProcessID, forKey: .activePostProcessID)
         try container.encode(useInputMethod, forKey: .useInputMethod)
+        try container.encode(appleAutoPunctuation, forKey: .appleAutoPunctuation)
     }
 
     public var activePostProcessConfig: PostProcessConfig {
@@ -350,6 +359,7 @@ public final class SettingsStore: @unchecked Sendable {
             cached.preferredListeningState = prefs.preferredListeningState
              cached.useInputMethod = prefs.useInputMethod
              cached.postProcessOnlyOnFinal = prefs.postProcessOnlyOnFinal
+             cached.appleAutoPunctuation = prefs.appleAutoPunctuation
          }
      }
 

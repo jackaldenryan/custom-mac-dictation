@@ -70,8 +70,10 @@ public final class ListeningSession: ObservableObject {
                 vocabulary: settings.vocabulary.filter(\.enabled),
                 commandPhrases: settings.commands.filter(\.enabled).flatMap(\.phrases).map {
                     $0.replacingOccurrences(of: " {app}", with: "").replacingOccurrences(of: "{app}", with: "")
-                } + AppNameResolver.commandPhrases()
+                } + AppNameResolver.commandPhrases(),
+                autoPunctuation: settings.appleAutoPunctuation
             )
+            DiagnosticLog.line("Apple auto punctuation \(settings.appleAutoPunctuation ? "on" : "off")")
             guard generation == startGeneration else { return }
             DiagnosticLog.line("Listening")
         } catch {
@@ -165,10 +167,10 @@ public final class ListeningSession: ObservableObject {
             lastPartial = ""
             let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
             guard state == .listening else { return }
-            let before = LivePhrase.lastTypedAt
-            LivePhrase.pendingLeadSpace = false
-            LivePhrase.commit(trimmed)
-            guard LivePhrase.lastTypedAt != before else { return }
+            guard LivePhrase.commitLonePunctuation(trimmed) else {
+                DiagnosticLog.line("Route dropped state=\(state.rawValue) text=\(trimmed) lone punct")
+                return
+            }
             lastTypedAt = LivePhrase.lastTypedAt
             lastFinal = trimmed
             lastRoute = "typed"

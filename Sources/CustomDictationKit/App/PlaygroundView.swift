@@ -105,19 +105,22 @@ private struct PlaygroundFieldView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let view = nsView.documentView as? NSTextView else { return }
+        let want = NSRange(location: max(0, target.field.loc), length: max(0, target.field.len))
+        context.coordinator.ignoreSelection = true
         if view.string != target.text {
             view.string = target.text
         }
-        let want = NSRange(location: max(0, target.field.loc), length: max(0, target.field.len))
         let ns = view.string as NSString
-        if want.location + want.length <= ns.length, view.selectedRange() != want {
-            view.setSelectedRange(want)
-        }
+        let loc = min(want.location, ns.length)
+        let len = min(want.length, max(0, ns.length - loc))
+        view.setSelectedRange(NSRange(location: loc, length: len))
+        context.coordinator.ignoreSelection = false
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         let target: PlaygroundTarget
         weak var textView: NSTextView?
+        var ignoreSelection = false
 
         init(target: PlaygroundTarget) {
             self.target = target
@@ -138,10 +141,9 @@ private struct PlaygroundFieldView: NSViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
-            guard let view = notification.object as? NSTextView else { return }
+            guard !ignoreSelection, let view = notification.object as? NSTextView else { return }
             let range = view.selectedRange()
-            target.field.loc = range.location
-            target.field.len = range.length
+            target.syncSelection(loc: range.location, len: range.length)
         }
     }
 }

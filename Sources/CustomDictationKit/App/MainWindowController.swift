@@ -255,6 +255,12 @@ private struct AppRootView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                Section("Punctuation") {
+                    Toggle("Apple automatic punctuation", isOn: autoPunctuationBinding)
+                    Text("Off (default): punctuation only when you say it — \u{201C}period\u{201D}, \u{201C}comma\u{201D}, \u{201C}question mark\u{201D} — like Voice Control. On: Apple also guesses marks from pauses, which puts stray periods and question marks mid-sentence.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Section("Finish a phrase after") {
                     Toggle("Disable silence finalize", isOn: disableFinalizeBinding)
                     Picker("Silence", selection: finalizeMenuBinding) {
@@ -788,6 +794,19 @@ private struct AppRootView: View {
             get: { settings.microphoneUID },
             set: { uid in
                 settings.microphoneUID = uid
+                persist()
+                if session.state == .listening {
+                    Task { await session.startListening() }
+                }
+            }
+        )
+    }
+
+    private var autoPunctuationBinding: Binding<Bool> {
+        Binding(
+            get: { settings.appleAutoPunctuation },
+            set: { on in
+                settings.appleAutoPunctuation = on
                 persist()
                 if session.state == .listening {
                     Task { await session.startListening() }

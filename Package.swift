@@ -40,6 +40,16 @@ let package = Package(
             name: "CheckFieldScenarios",
             dependencies: ["CustomDictationKit"],
             path: "Sources/CheckFieldScenarios"
+        ),
+        .executableTarget(
+            name: "CheckConfigMatrix",
+            dependencies: ["CustomDictationKit"],
+            path: "Sources/CheckConfigMatrix"
+        ),
+        .executableTarget(
+            name: "ProbeSpeech",
+            dependencies: ["CustomDictationKit"],
+            path: "Sources/ProbeSpeech"
         )
     ]
 )

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 public enum LivePhrase {
@@ -8,6 +9,15 @@ public enum LivePhrase {
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
     nonisolated(unsafe) private static var lastInsertPath = LiveInsertPath.skipped
+    /// Insertion method chosen for the phrase on screen; nil between phrases.
+    /// Once a phrase types with HID it stays HID (see PhrasePathLock).
+    nonisolated(unsafe) private static var phrasePath: LiveInsertPath?
+    /// Last character dictation typed, and the app it went to. Lets a
+    /// segment's leading punctuation be checked against what we really typed
+    /// (see BoundaryPunctuation); cleared by commands.
+    nonisolated(unsafe) private static var lastTypedTail: Character?
+    nonisolated(unsafe) private static var lastTypedApp: String?
+    nonisolated(unsafe) private static var phraseCanAttachPunctuation = false
 
     public static func usesInputMethod() -> Bool {
         if DictationTextInput.override != nil { return true }
@@ -25,13 +35,32 @@ public enum LivePhrase {
         apply(out, keepSelected: false)
         finishCommittedMark()
         if !displayed.isEmpty { pendingLeadSpace = true }
+        rememberTail(displayed)
         displayed = ""
+        phrasePath = nil
         lastTypedAt = Date()
+    }
+
+    /// Lone punctuation final from Apple ("?" after "What do you think").
+    /// Returns false when it was dropped (nothing of ours to attach to, or we
+    /// already typed punctuation there); the lead-space state is then kept.
+    @discardableResult
+    public static func commitLonePunctuation(_ text: String) -> Bool {
+        let before = lastTypedAt
+        let hadLeadSpace = pendingLeadSpace
+        pendingLeadSpace = false
+        commit(text)
+        if lastTypedAt == before {
+            pendingLeadSpace = hadLeadSpace
+            return false
+        }
+        return true
     }
 
     public static func discard() {
         apply("", keepSelected: false)
         displayed = ""
+        phrasePath = nil
         if !usesInputMethod() {
             FieldEditor.clearLive()
         }
@@ -40,13 +69,36 @@ public enum LivePhrase {
     public static func noteCommand() {
         lastTypedAt = Date()
         pendingLeadSpace = true
+        lastTypedTail = nil
+        lastTypedApp = nil
     }
 
     public static func keepAndUnhighlight() {
         guard !displayed.isEmpty else { return }
         finishCommittedMark()
         pendingLeadSpace = true
+        rememberTail(displayed)
         displayed = ""
+        phrasePath = nil
+    }
+
+    private static func rememberTail(_ typed: String) {
+        guard lastInsertPath != .skipped,
+              let last = typed.trimmingCharacters(in: .whitespacesAndNewlines).last
+        else { return }
+        lastTypedTail = last
+        lastTypedApp = frontAppID()
+    }
+
+    /// Tail we typed, only if it went to the app that is frontmost now.
+    private static func tailInFrontApp() -> Character? {
+        guard let app = lastTypedApp, app == frontAppID() else { return nil }
+        return lastTypedTail
+    }
+
+    private static func frontAppID() -> String {
+        if PlaygroundTarget.shared.isActive { return "playground:\(PlaygroundTarget.shared.box.rawValue)" }
+        return NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
     }
 
     private static func finishCommittedMark() {
@@ -70,11 +122,22 @@ public enum LivePhrase {
             } else {
                 phraseSnapshot = InsertionContext.snapshot()
             }
+            if let app = lastTypedApp, app != frontAppID() {
+                // New app, new field: nothing we typed sits before this
+                // caret, so neither a lead space nor glued punctuation.
+                pendingLeadSpace = false
+            }
+            let tail = tailInFrontApp()
             if let snap = phraseSnapshot {
                 phraseIsMidSentence = !InsertionContext.impliesSentenceStart(snap)
             } else {
-                phraseIsMidSentence = pendingLeadSpace
+                phraseIsMidSentence = pendingLeadSpace && !BoundaryPunctuation.isTerminal(tail)
             }
+            phraseCanAttachPunctuation = BoundaryPunctuation.canAttach(tail: tail, snapshot: phraseSnapshot)
+        }
+        guard let text = BoundaryPunctuation.clean(text, canAttach: phraseCanAttachPunctuation) else {
+            DiagnosticLog.line("Dropped boundary punctuation \(String(reflecting: text)); nothing to attach to")
+            return nil
         }
         let input = PostProcessInput(
             text: text,
@@ -130,29 +193,93 @@ public enum LivePhrase {
             displayed = ""
             return
         }
-        if FieldEditor.replaceLive(with: text, select: keepSelected && !text.isEmpty) {
-            lastInsertPath = .ax
-            displayed = text
+        if displayed.isEmpty { phrasePath = nil }
+        if PhrasePathLock.mayTryAX(phrasePath: phrasePath) {
+            if FieldEditor.replaceLive(with: text, select: keepSelected && !text.isEmpty) {
+                lastInsertPath = .ax
+                phrasePath = .ax
+                displayed = text
+                return
+            }
+            if phrasePath == .ax, !displayed.isEmpty {
+                // A native field stopped taking AX writes mid-phrase. The
+                // failed write restored the selection, so our live text is
+                // still selected: typing replaces exactly that, then this
+                // phrase continues with HID at the caret it leaves.
+                DiagnosticLog.line("AX live write failed mid-phrase; finishing phrase with keystrokes")
+                if text.isEmpty {
+                    Typist.deleteSelection()
+                } else {
+                    Typist.typeText(text, preferAX: false)
+                }
+                Typist.releaseModifiers()
+                lastInsertPath = .hid
+                phrasePath = .hid
+                displayed = text
+                return
+            }
+        }
+        guard hidFallbackAllowed() else {
+            DiagnosticLog.line("Live phrase skipped; front app has nowhere to type")
+            lastInsertPath = .skipped
+            displayed = ""
             return
         }
         hidReplace(text)
         lastInsertPath = .hid
+        phrasePath = .hid
         displayed = text
+    }
+
+    /// HID fallback must not type where no text can land. Browsers and
+    /// Electron apps need HID (their fields are often invisible to AX), but
+    /// Finder has no insertion point at all and the Notes sidebar is not a
+    /// text field, so dictating there renames files or mangles the sidebar.
+    /// The IMK path already skips these via client availability; this is the
+    /// AX/HID equivalent.
+    private static func hidFallbackAllowed() -> Bool {
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        if front == "com.apple.finder" { return false }
+        if front == "com.apple.Notes", FieldEditor.focusedElementIsPresentButNotEditable() { return false }
+        return true
     }
 
     private static func hidReplace(_ text: String) {
         if displayed.isEmpty {
-            if FieldEditor.hasSelection() {
-                Typist.deleteSelection()
-            }
+            // No AX-driven delete of a "selection" first: web engines report
+            // stale or parent-level selections, and a stray backspace eats a
+            // character of earlier text. A real selection is replaced by the
+            // typed text anyway, as with the shipped release.
             Typist.typeText(text, preferAX: false)
-        } else if folds(text).hasPrefix(folds(displayed)) {
-            Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false)
         } else {
-            Typist.deleteBackward(times: (displayed as NSString).length)
-            Typist.typeText(text, preferAX: false)
+            // Suffix-diff revision: a recognizer correction usually changes
+            // the tail ("reciept" -> "receipt"), so keep the shared prefix
+            // and only delete/retype the differing suffix instead of the
+            // whole phrase. Fewer key events means faster Slack updates and
+            // less flicker.
+            let keep = commonPrefixKeepCount(displayed, text)
+            if keep == displayed.count, text.count >= displayed.count {
+                Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false)
+            } else {
+                Typist.deleteBackward(times: displayed.count - keep)
+                Typist.typeText(String(text.dropFirst(keep)), preferAX: false)
+            }
         }
         Typist.releaseModifiers()
+    }
+
+    /// Characters of `displayed` shared with the start of `text`, comparing
+    /// fold-equal (curly/straight quotes match). All folds in this codebase
+    /// are 1:1 character mappings, so the count is exact in characters.
+    public static func commonPrefixKeepCount(_ displayed: String, _ text: String) -> Int {
+        var keep = 0
+        var rest = text[...]
+        for ch in displayed {
+            guard let first = rest.first, folds(String(first)) == folds(String(ch)) else { break }
+            keep += 1
+            rest = rest.dropFirst()
+        }
+        return keep
     }
 
     private static func folds(_ text: String) -> String {

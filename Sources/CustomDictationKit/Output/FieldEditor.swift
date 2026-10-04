@@ -10,6 +10,10 @@ public enum FieldEditor {
     }
 
     nonisolated(unsafe) private static var live: LiveMark?
+    /// Apps that answered an AX write with success but did not show the
+    /// text. Never AX-write there again this session (see AXWritePolicy).
+    nonisolated(unsafe) private static var untrustedBundleIDs: Set<String> = []
+    nonisolated(unsafe) private static var webEngineCache: [String: Bool] = [:]
 
     public static func clearLive() {
         live = nil
@@ -82,6 +86,16 @@ public enum FieldEditor {
         return isStub(el)
     }
 
+    /// True when AX can see the focused element but it is not an editable
+    /// text field (e.g. the Notes sidebar). Browsers with an invisible-to-AX
+    /// search box return false here (no element at all), so HID fallback
+    /// still types there.
+    public static func focusedElementIsPresentButNotEditable() -> Bool {
+        guard let el = focusedElement() else { return false }
+        if isStub(el) { return false }
+        return !canEditText(el)
+    }
+
     public static func hasSelection() -> Bool {
         if let selected = selectedString(), !selected.isEmpty { return true }
         return elementWithSelection() != nil
@@ -118,8 +132,67 @@ public enum FieldEditor {
             DiagnosticLog.line("Focused AX element is a stub; skip field insert")
             return nil
         }
-        if canEditText(el) { return el }
-        return nil
+        guard canEditText(el) else { return nil }
+        guard axWritesAllowed(el) else { return nil }
+        return el
+    }
+
+    /// AX writes only where they land synchronously (native AppKit fields).
+    /// Web engines must get HID only: a failed AX attempt there moves the
+    /// caret before we can tell it failed.
+    public static func focusedAllowsAXWrite() -> Bool {
+        guard let el = focusedElement() else { return false }
+        return axWritesAllowed(el)
+    }
+
+    private static func axWritesAllowed(_ el: AXUIElement) -> Bool {
+        let app = owningApp(el)
+        let bundleID = app?.bundleIdentifier ?? ""
+        return AXWritePolicy.allowsAXWrite(
+            bundleID: bundleID,
+            isWebEngineApp: isWebEngineApp(app),
+            focusInWebArea: isInsideWebArea(el),
+            untrustedBundleIDs: untrustedBundleIDs
+        )
+    }
+
+    private static func owningApp(_ el: AXUIElement) -> NSRunningApplication? {
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(el, &pid) == .success else { return nil }
+        return NSRunningApplication(processIdentifier: pid)
+    }
+
+    private static func isWebEngineApp(_ app: NSRunningApplication?) -> Bool {
+        guard let app, let url = app.bundleURL else { return false }
+        let key = app.bundleIdentifier ?? url.path
+        if let cached = webEngineCache[key] { return cached }
+        let frameworks = url.appendingPathComponent("Contents/Frameworks")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: frameworks.path)) ?? []
+        let result = AXWritePolicy.frameworksIndicateWebEngine(names)
+        webEngineCache[key] = result
+        return result
+    }
+
+    private static func isInsideWebArea(_ el: AXUIElement) -> Bool {
+        var current: AXUIElement? = el
+        for _ in 0..<40 {
+            guard let node = current else { return false }
+            if stringValue(node, kAXRoleAttribute as CFString) == "AXWebArea" { return true }
+            current = parent(node)
+        }
+        return false
+    }
+
+    private static func markUntrusted(_ el: AXUIElement) {
+        guard let id = owningApp(el)?.bundleIdentifier, !id.isEmpty else { return }
+        if untrustedBundleIDs.insert(id).inserted {
+            DiagnosticLog.line("AX writes disabled for \(id) this session; typing with keystrokes")
+        }
+    }
+
+    private static func restoreSelection(_ el: AXUIElement, _ range: CFRange?) {
+        guard var original = range, let value = AXValueCreate(.cfRange, &original) else { return }
+        AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, value)
     }
 
     private static func focusedElement() -> AXUIElement? {
@@ -168,13 +241,19 @@ public enum FieldEditor {
 
     @discardableResult
     private static func write(_ el: AXUIElement, location: Int, length: Int, text: String, select: Bool) -> Bool {
+        // Whatever happens, a failed write must leave the caret and selection
+        // exactly where they were, so a keystroke fallback types where the
+        // user expects and not over a run of their existing text.
+        let original = selectedRange(el)
         var range = CFRange(location: max(0, location), length: max(0, length))
         guard let rangeValue = AXValueCreate(.cfRange, &range) else { return false }
         if AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, rangeValue) != .success {
+            restoreSelection(el, original)
             return false
         }
         if AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, text as CFString) != .success {
             if !setValueBySplicing(el, location: location, length: length, text: text) {
+                restoreSelection(el, original)
                 return false
             }
         }
@@ -195,6 +274,8 @@ public enum FieldEditor {
         if !confirmed(el, location: location, text: text) {
             DiagnosticLog.line("AX write not visible in field")
             live = nil
+            restoreSelection(el, original)
+            markUntrusted(el)
             return false
         }
         return true

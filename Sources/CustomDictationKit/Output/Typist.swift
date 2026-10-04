@@ -76,6 +76,9 @@ public enum Typist {
         }
     }
 
+    /// times is a CHARACTER count: one backspace deletes a full grapheme, so
+    /// callers must pass character counts, not UTF-16 lengths (emoji would
+    /// otherwise over-delete).
     public static func deleteBackward(times: Int) {
         guard times > 0 else { return }
         if !AXIsProcessTrusted() { return }

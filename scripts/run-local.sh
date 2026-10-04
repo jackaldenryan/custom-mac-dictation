@@ -11,7 +11,10 @@ dist="$root/dist/local"
 app="$dist/$app_name.app"
 config="${CUSTOM_DICTATION_CONFIG:-$HOME/.custom-dictation-config-local}"
 
-export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+if [[ ! -d "$DEVELOPER_DIR" ]]; then
+  export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+fi
 
 swift build -c release --product "$binary_name"
 bin="$(swift build -c release --show-bin-path)/$binary_name"

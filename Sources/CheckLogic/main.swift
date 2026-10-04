@@ -1,6 +1,7 @@
 import CoreGraphics
 import CustomDictationKit
 import Foundation
+import Speech
 
 func expect(_ condition: Bool, _ message: String) {
     if !condition {
@@ -10,6 +11,7 @@ func expect(_ condition: Bool, _ message: String) {
 }
 
 SoundFeedback.isEnabled = false
+DiagnosticLog.isEnabled = false
 
 expect(KeyPressGrammar.parse("shift d") == nil, "press required")
 expect(KeyPressGrammar.parse("command click") == nil, "click is not key grammar")
@@ -266,6 +268,8 @@ expect(!typistSource.contains("selectBackward"), "never shift-select live phrase
 expect(typistSource.contains("releaseModifiers"), "release stuck modifiers")
 expect(!liveSource.contains("selectBackward"), "live phrase does not shift-select")
 expect(liveSource.contains("hidReplace"), "AX/HID path kept")
+expect(liveSource.contains("hidFallbackAllowed"), "Finder/sidebar never dictated")
+expect(liveSource.contains("commonPrefixKeepCount"), "HID suffix-diff revision")
 expect(liveSource.contains("Typist.typeText"), "HID types when IMK is off")
 expect(liveSource.contains("setMarkedText"), "live phrase uses marked text")
 expect(liveSource.contains("DictationTextInput"), "live phrase uses text input client")
@@ -299,6 +303,19 @@ do {
     hid.apply(shaped: "goodbye", keepSelected: false, useInputMethod: false)
     expect(hid.text == "goodbyehello world", "HID inserts into OpenCode selection")
     expect(hid.lastPath == .hid, "OpenCode uses HID")
+}
+do {
+    let hid = SimulatedField(box: .openCode, text: "")
+    hid.apply(shaped: "Testing testing?", keepSelected: true, useInputMethod: false)
+    hid.apply(shaped: "Testing testing", keepSelected: false, useInputMethod: false)
+    hid.apply(shaped: "?", keepSelected: false, useInputMethod: false)
+    expect(hid.text == "Testing testing?", "OpenCode leftover punct must not replace the phrase")
+}
+do {
+    let hid = SimulatedField(box: .openCode, text: "aa bb", loc: 2, len: 0)
+    hid.apply(shaped: "XX", keepSelected: true, useInputMethod: false)
+    expect(hid.text == "aaXX bb", "HID insert stays at clicked caret")
+    expect(hid.loc == 4, "HID caret stays after mid insert")
 }
 do {
     let imk = SimulatedField(box: .openCode, text: "hello world", loc: 0, len: 5)
@@ -343,10 +360,87 @@ do {
 do {
     let finderHid = SimulatedField(box: .finder, text: "")
     finderHid.apply(shaped: "hello", keepSelected: false, useInputMethod: false)
-    expect(finderHid.text == "hello", "Finder HID types")
+    expect(finderHid.text == "", "Finder AX/HID skips")
+    expect(finderHid.lastPath == .skipped, "Finder skip path")
+    let finderRelease = SimulatedField(box: .finder, text: "")
+    finderRelease.apply(shaped: "hello", keepSelected: false, useInputMethod: false, forceHID: true)
+    expect(finderRelease.text == "hello", "release-HID model still types in Finder")
     let finderImk = SimulatedField(box: .finder, text: "")
     finderImk.apply(shaped: "hello", keepSelected: false, useInputMethod: true)
     expect(finderImk.text == "", "Finder IMK skips")
+}
+do {
+    let sidebar = SimulatedField(box: .notesSidebar, text: "All iCloud", loc: 0, len: 0)
+    sidebar.apply(shaped: "Hello", keepSelected: true, useInputMethod: false)
+    expect(sidebar.text == "All iCloud", "Notes sidebar AX/HID skips")
+    expect(sidebar.lastPath == .skipped, "sidebar skip path")
+}
+do {
+    // Suffix-diff revision: "reciept" -> "receipt" shares "rec", so 4
+    // backspaces + 4 retypes instead of 7 + 7.
+    let slack = SimulatedField(box: .slack, text: "")
+    slack.apply(shaped: "reciept", keepSelected: true, useInputMethod: false)
+    slack.apply(shaped: "receipt", keepSelected: true, useInputMethod: false)
+    slack.apply(shaped: "receipt", keepSelected: false, useInputMethod: false)
+    expect(slack.text == "receipt", "HID suffix-diff keeps the words")
+    expect(slack.deletedUnits == 4, "HID suffix-diff deletes only the tail")
+    expect(slack.insertedUnits == 7 + 4, "HID suffix-diff retypes only the tail")
+}
+do {
+    expect(LivePhrase.commonPrefixKeepCount("reciept", "receipt") == 3, "common prefix of correction")
+    expect(LivePhrase.commonPrefixKeepCount("Hello", "Hello world") == 5, "common prefix of growth")
+    expect(LivePhrase.commonPrefixKeepCount("abc", "xyz") == 0, "no common prefix")
+}
+// Regression: "Slack cursor jumps back and types inside earlier words".
+// Oct 3 log, saying "hey guess what I don't know you tell me" in Slack:
+// every partial tried an AX write ("AX write not visible in field"), which
+// moved Slack's caret to a stale spot before HID typed there. Result was
+// "Hey, guess? I don't know you tell .me don't". Phrases must only append.
+func slackLogReplay(_ field: SimulatedField) {
+    for p in ["Hey, guess", "Hey, guess what", "Hey, guess what?"] {
+        field.apply(shaped: p, keepSelected: true, useInputMethod: false)
+    }
+    field.apply(shaped: "Hey, guess what", keepSelected: false, useInputMethod: false)
+    field.apply(shaped: "?", keepSelected: false, useInputMethod: false)
+    for p in [" I", " I don't", " I don't know", " I don't know you", " I don't know you tell",
+              " I don't know you tell me", " I don't know you tell me."] {
+        field.apply(shaped: p, keepSelected: true, useInputMethod: false)
+    }
+    field.apply(shaped: " I don't know you tell me", keepSelected: false, useInputMethod: false)
+    field.apply(shaped: ".", keepSelected: false, useInputMethod: false)
+}
+do {
+    let want = "Hey, guess what? I don't know you tell me."
+    for box in [FieldBox.slack, .cursorEditor, .openCode, .googleSearch, .chromeURL] {
+        let fixed = SimulatedField(box: box, text: "")
+        slackLogReplay(fixed)
+        expect(fixed.text == want, "\(box.title): dictation only appends (got \(String(reflecting: fixed.text)))")
+        expect(fixed.loc == (want as NSString).length, "\(box.title): caret ends after the dictation")
+    }
+    let preFix = SimulatedField(box: .slack, text: "")
+    preFix.probeAXInWebEngines = true
+    slackLogReplay(preFix)
+    expect(preFix.text != want, "pre-fix replay still reproduces the cursor-jump bug (keeps the model honest)")
+    let withPrior = SimulatedField(box: .slack, text: "Earlier message. ")
+    slackLogReplay(withPrior)
+    expect(withPrior.text == "Earlier message. " + want, "Slack: earlier text untouched, dictation appended")
+}
+do {
+    // AXWritePolicy: web engines never get AX writes.
+    expect(AXWritePolicy.frameworksIndicateWebEngine(["Electron Framework.framework", "Squirrel.framework"]), "Electron app detected")
+    expect(AXWritePolicy.frameworksIndicateWebEngine(["Google Chrome Framework.framework"]), "Chrome detected")
+    expect(AXWritePolicy.frameworksIndicateWebEngine(["Chromium Embedded Framework.framework"]), "CEF detected")
+    expect(!AXWritePolicy.frameworksIndicateWebEngine(["Sparkle.framework", "ServiceFramework.framework"]), "native frameworks not web")
+    expect(!AXWritePolicy.allowsAXWrite(bundleID: "com.tinyspeck.slackmacgap", isWebEngineApp: false, focusInWebArea: false, untrustedBundleIDs: []), "Slack never AX-writes")
+    expect(!AXWritePolicy.allowsAXWrite(bundleID: "x.electron.app", isWebEngineApp: true, focusInWebArea: false, untrustedBundleIDs: []), "Electron never AX-writes")
+    expect(!AXWritePolicy.allowsAXWrite(bundleID: "dev.tauri.app", isWebEngineApp: false, focusInWebArea: true, untrustedBundleIDs: []), "web area never AX-writes")
+    expect(!AXWritePolicy.allowsAXWrite(bundleID: "com.example.flaky", isWebEngineApp: false, focusInWebArea: false, untrustedBundleIDs: ["com.example.flaky"]), "app with a failed AX write stays HID")
+    expect(AXWritePolicy.allowsAXWrite(bundleID: "com.apple.Notes", isWebEngineApp: false, focusInWebArea: false, untrustedBundleIDs: []), "Notes keeps AX live mark")
+    expect(PhrasePathLock.mayTryAX(phrasePath: nil), "new phrase may try AX")
+    expect(PhrasePathLock.mayTryAX(phrasePath: .ax), "AX phrase keeps AX")
+    expect(!PhrasePathLock.mayTryAX(phrasePath: .hid), "HID phrase never switches to AX")
+    expect(liveSource.contains("PhrasePathLock"), "live phrase uses the path lock")
+    expect(!liveSource.contains("FieldEditor.hasSelection()"), "no AX-guessed backspace before HID typing")
 }
 expect(FieldBox.allCases.contains(.openCode), "opencode box exists")
 expect(
@@ -369,6 +463,9 @@ expect(LivePhrase.usesInputMethod() == false || DictationTextInput.override != n
 expect(!typistSource.contains("typeViaSystemEvents"), "do not type via System Events")
 let fieldSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
 expect(fieldSource.contains("caretStillInMark"), "stale live mark rejected")
+expect(fieldSource.contains("restoreSelection"), "failed AX write puts the caret back")
+expect(fieldSource.contains("markUntrusted"), "app with an unconfirmed AX write goes HID-only")
+expect(fieldSource.contains("axWritesAllowed"), "AX writes gated by AXWritePolicy")
 let infoPlist = try! String(contentsOf: repo.appendingPathComponent("Resources/Info.plist"), encoding: .utf8)
 expect(infoPlist.contains("InputMethodConnectionName"), "app is an input method")
 expect(infoPlist.contains("DictationInputController"), "IMK controller class")
@@ -539,6 +636,106 @@ do {
     LivePhrase.show("Hello")
     LivePhrase.commit("Hello")
     expect(doc.text == "sidebar", "live phrase skips when no client")
+}
+
+// Regression: "double punctuation and a message starting with a period".
+// Oct 3 Slack log: Apple sends a sentence's closing mark as a lone final
+// ("?") AND again at the start of the next segment ("? I don't know it
+// seems OK"). Both got typed: "What do you think?? I don't know",
+// "Let's test.. OK". Then in a new, empty field the carried-over "."
+// started the message: ". OK it looks like...". Drives the real LivePhrase
+// through the playground with no AX snapshot (worst case, like Slack).
+do {
+    let playground = PlaygroundTarget.shared
+    playground.box = .slack
+    playground.activate()
+    defer { playground.deactivate() }
+    LivePhrase.displayed = ""
+    LivePhrase.noteCommand()
+    LivePhrase.pendingLeadSpace = false
+    func phrase(_ partials: [String], _ final: String, lone: String?) {
+        for p in partials { LivePhrase.show(p) }
+        LivePhrase.commit(final)
+        if let lone {
+            LivePhrase.lastTypedAt = .distantPast
+            LivePhrase.commitLonePunctuation(lone)
+        }
+    }
+    phrase(["What", "What do", "What do you", "What do you think", "What do you think?"], "What do you think", lone: "?")
+    phrase(["I", "I don't", "I don't know", "? I don't know it", "? I don't know it seems", "? I don't know it seems.",
+            "? I don't know it seems OK", "? I don't know it seems OK."], "? I don't know it seems OK", lone: ".")
+    phrase(["let", "let's", "let's test", "let's test."], "let's test", lone: ".")
+    phrase(["OK", "OK this", ". OK this seems", ". OK this seems de", ". OK. This seems decent", ". OK. This seems decent."],
+           ". OK. This seems decent", lone: ".")
+    let want = "What do you think? I don't know it seems OK. Let's test. OK. This seems decent."
+    expect(playground.field.text == want, "no doubled punctuation (got \(String(reflecting: playground.field.text)))")
+
+    // A lone mark right after one we typed is a duplicate.
+    LivePhrase.lastTypedAt = .distantPast
+    expect(!LivePhrase.commitLonePunctuation("."), "second period after a period is dropped")
+    expect(playground.field.text == want, "field unchanged by duplicate lone period")
+
+    // Switch to another app's empty field: the carried-over "." is dropped.
+    playground.box = .notes
+    phrase(["OK", ". OK it looks", ". OK it looks like that one issue is fixed"], ". OK it looks like that one issue is fixed", lone: nil)
+    expect(playground.field.text == "OK it looks like that one issue is fixed",
+           "new field never starts with carried-over punctuation (got \(String(reflecting: playground.field.text)))")
+
+    // Nothing typed yet: a lone mark has nothing to close.
+    playground.box = .slack
+    LivePhrase.noteCommand()
+    LivePhrase.lastTypedAt = .distantPast
+    expect(!LivePhrase.commitLonePunctuation("."), "lone period after a command is dropped")
+    expect(playground.field.text == "", "empty field stays empty")
+
+    // Explicitly spoken punctuation inside a segment is untouched.
+    LivePhrase.pendingLeadSpace = false
+    phrase(["like this. And then the next sentence"], "like this. And then the next sentence", lone: ".")
+    expect(playground.field.text == "Like this. And then the next sentence.", "mid-segment punctuation kept")
+}
+do {
+    func snap(_ field: String) -> CaretSnapshot {
+        InsertionContext.snapshot(in: field, utf16Location: field.utf16.count, utf16Length: 0)
+    }
+    expect(BoundaryPunctuation.canAttach(tail: "k", snapshot: snap("What do you think")), "mark closes our word")
+    expect(BoundaryPunctuation.canAttach(tail: "k", snapshot: nil), "mark closes our word without AX")
+    expect(!BoundaryPunctuation.canAttach(tail: "?", snapshot: snap("What do you think?")), "no mark after our mark")
+    expect(!BoundaryPunctuation.canAttach(tail: "?", snapshot: snap("What do you think")), "our tail vetoes a stale AX caret")
+    expect(!BoundaryPunctuation.canAttach(tail: nil, snapshot: snap("")), "empty field: nothing to close")
+    expect(!BoundaryPunctuation.canAttach(tail: "l", snapshot: snap("")), "empty field even with a tail")
+    expect(!BoundaryPunctuation.canAttach(tail: "l", snapshot: snap("Done\n")), "start of a new line")
+    expect(BoundaryPunctuation.canAttach(tail: nil, snapshot: snap("working")), "user-typed word can take a spoken comma")
+    expect(!BoundaryPunctuation.canAttach(tail: nil, snapshot: nil), "nothing known: drop")
+    expect(BoundaryPunctuation.clean("? I don't know", canAttach: false) == "I don't know", "strip carried-over question mark")
+    expect(BoundaryPunctuation.clean(". OK. This", canAttach: false) == "OK. This", "strip only the leading run")
+    expect(BoundaryPunctuation.clean("?", canAttach: false) == nil, "lone mark with nothing to close")
+    expect(BoundaryPunctuation.clean("? I", canAttach: true) == "? I", "attachable mark kept")
+    expect(BoundaryPunctuation.clean("like this. And", canAttach: false) == "like this. And", "inner mark kept")
+    expect(BoundaryPunctuation.clean("OK", canAttach: false) == "OK", "no lead, no change")
+}
+
+// Apple automatic punctuation is off by default (Oct 3): its pause guesses
+// put "?" and "." mid-sentence ("or is it just? Something"). Spoken
+// punctuation still works with it off: scripts/probe-punctuation.sh speaks
+// "hello comma how are you question mark" and gets "Hello, how are you?".
+do {
+    expect(!AppSettings.default.appleAutoPunctuation, "Apple auto punctuation off by default")
+    let preset = DictationTranscriber.Preset.progressiveLongDictation
+    expect(!TranscriberOptions.transcription(preset: preset, autoPunctuation: false).contains(.punctuation),
+           "auto punctuation off removes .punctuation")
+    expect(TranscriberOptions.transcription(preset: preset, autoPunctuation: true).contains(.punctuation),
+           "auto punctuation on keeps .punctuation")
+    let old = #"{"hasCompletedOnboarding":true,"launchAtLogin":false}"#.data(using: .utf8)!
+    let decoded = try! JSONDecoder().decode(AppSettings.self, from: old)
+    expect(!decoded.appleAutoPunctuation, "settings saved before the toggle existed decode as off")
+    var on = AppSettings.default
+    on.appleAutoPunctuation = true
+    let roundTrip = try! JSONDecoder().decode(AppSettings.self, from: try! JSONEncoder().encode(on))
+    expect(roundTrip.appleAutoPunctuation, "auto punctuation setting round-trips")
+    let engine = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
+    expect(engine.contains("TranscriberOptions.transcription"), "engine builds options from the setting")
+    expect(!engine.contains(".union([.punctuation])"), "engine never forces auto punctuation on")
+    expect(engine.contains("lastAutoPunctuation == autoPunctuation"), "toggling rebuilds the transcriber")
 }
 
 print("CheckLogic passed")

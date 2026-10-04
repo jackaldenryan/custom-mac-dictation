@@ -10,7 +10,11 @@ public enum DiagnosticLog {
         return folder.appendingPathComponent(name)
     }
 
+    /// Test harnesses turn this off so they never write the user's log.
+    nonisolated(unsafe) public static var isEnabled = true
+
     public static func line(_ message: String) {
+        guard isEnabled else { return }
         let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withInternetDateTime])
         let entry = "[\(stamp)] \(message)\n"
         queue.async {
