@@ -65,9 +65,13 @@ public enum FieldEditor {
         var ref: AXUIElement?
         let system = AXUIElementCreateSystemWide()
         guard AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &ref) == .success,
-              let start = ref,
-              let target = pressable(from: start)
+              let start = ref
         else { return false }
+        // Items in lists, tables and file browsers (Finder) need a real
+        // click: an Accessibility press does not set the selection anchor
+        // a later "shift click" extends from, and does not double-click.
+        if insideSelectableList(start) { return false }
+        guard let target = pressable(from: start) else { return false }
         let repeats = min(75, max(1, times))
         for i in 0..<repeats {
             if AXUIElementPerformAction(target, kAXPressAction as CFString) != .success {
@@ -79,6 +83,18 @@ public enum FieldEditor {
         }
         DiagnosticLog.line("AXPress x=\(Int(point.x)) y=\(Int(point.y)) times=\(repeats)")
         return true
+    }
+
+    public static let selectableListRoles: Set<String> = ["AXOutline", "AXTable", "AXList", "AXBrowser", "AXGrid"]
+
+    private static func insideSelectableList(_ el: AXUIElement) -> Bool {
+        var current: AXUIElement? = el
+        for _ in 0..<10 {
+            guard let node = current else { return false }
+            if let role = stringValue(node, kAXRoleAttribute as CFString), selectableListRoles.contains(role) { return true }
+            current = parent(node)
+        }
+        return false
     }
 
     public static func focusedLooksLikeStub() -> Bool {

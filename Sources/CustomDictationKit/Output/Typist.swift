@@ -100,26 +100,29 @@ public enum Typist {
         if flags == .maskCommand, !right, repeats == 1, LinkOpener.openLinkUnderPointerInNewTab(at: cgMouseLocation()) {
             return
         }
-        if !flags.isEmpty, systemEventsClick(flags: flags, right: right, times: repeats) {
-            DiagnosticLog.line("System Events clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
-            return
-        }
         if flags.isEmpty, !right, FieldEditor.pressAtMouse(times: repeats) {
             return
         }
+        // Modifier clicks ("shift click", "command click", "option click")
+        // must be real mouse events with the modifier held. The old path
+        // asked System Events to `click at` with `key down shift`, but that
+        // click is an Accessibility press on the element, not a mouse event,
+        // so the app never saw Shift: shift-click in a Finder list selected
+        // only the one item instead of the range (Oct 5).
         let point = cgMouseLocation()
-        let keys = CGEventSource(stateID: .combinedSessionState)
-        keys?.localEventsSuppressionInterval = 0
+        let source = CGEventSource(stateID: .hidSystemState)
+        source?.localEventsSuppressionInterval = 0
         let button: CGMouseButton = right ? .right : .left
         let downType: CGEventType = right ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = right ? .rightMouseUp : .leftMouseUp
-        postModifiers(source: keys, flags: flags, keyDown: true)
+        postModifiers(source: source, flags: flags, keyDown: true)
         if !flags.isEmpty {
             waitForModifierState(flags)
+            Thread.sleep(forTimeInterval: 0.03)
         }
         for index in 1...repeats {
-            let down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
-            let up = CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
+            let down = CGEvent(mouseEventSource: source, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
+            let up = CGEvent(mouseEventSource: source, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
             down?.flags = flags
             up?.flags = flags
             down?.setIntegerValueField(.mouseEventClickState, value: Int64(index))
@@ -131,7 +134,10 @@ public enum Typist {
                 Thread.sleep(forTimeInterval: 0.008)
             }
         }
-        postModifiers(source: keys, flags: flags, keyDown: false)
+        if !flags.isEmpty {
+            Thread.sleep(forTimeInterval: 0.03)
+        }
+        postModifiers(source: source, flags: flags, keyDown: false)
         releaseModifiers()
         DiagnosticLog.line("Clicked \(right ? "right" : "left") flags=\(flags.rawValue) times=\(repeats) into \(frontAppName())")
     }
@@ -159,41 +165,12 @@ public enum Typist {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    private static func systemEventsClick(flags: CGEventFlags, right: Bool, times: Int) -> Bool {
-        let loc = NSEvent.mouseLocation
-        var names: [String] = []
-        if flags.contains(.maskCommand) { names.append("command") }
-        if flags.contains(.maskShift) { names.append("shift") }
-        if flags.contains(.maskAlternate) { names.append("option") }
-        if flags.contains(.maskControl) { names.append("control") }
-        let down = names.map { "key down \($0)" }.joined(separator: "\n")
-        let up = names.reversed().map { "key up \($0)" }.joined(separator: "\n")
-        let verb = right ? "right click" : "click"
-        let clicks = Array(repeating: "\(verb) at {\(Int(loc.x.rounded())), \(Int(loc.y.rounded()))}", count: times).joined(separator: "\n")
-        let source = """
-        tell application "System Events"
-        \(down)
-        delay 0.05
-        \(clicks)
-        delay 0.05
-        \(up)
-        end tell
-        """
-        var error: NSDictionary?
-        _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
-        if let error {
-            DiagnosticLog.line("System Events click failed: \(error)")
-            return false
-        }
-        return true
-    }
-
     private static func waitForModifierState(_ flags: CGEventFlags) {
         for _ in 0..<25 {
-            if CGEventSource.flagsState(.combinedSessionState).contains(flags) { return }
+            if CGEventSource.flagsState(.hidSystemState).contains(flags) { return }
             Thread.sleep(forTimeInterval: 0.01)
         }
-        DiagnosticLog.line("Click modifiers not visible in session state flags=\(flags.rawValue) session=\(CGEventSource.flagsState(.combinedSessionState).rawValue)")
+        DiagnosticLog.line("Click modifiers not visible in HID state flags=\(flags.rawValue) hid=\(CGEventSource.flagsState(.hidSystemState).rawValue)")
     }
 
     private static func cgMouseLocation() -> CGPoint {

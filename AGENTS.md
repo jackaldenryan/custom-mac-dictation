@@ -32,6 +32,10 @@ Because every mark is spoken, the app types every mark it gets. Removed in 0.1.4
 
 `Output/PostProcess.swift` (`DefaultPostProcess`) is the only post-process: capitals, spacing, mid-sentence fit. There is no Post-process tab or JavaScript config anymore (removed in 0.1.40); change behavior in code and cover it in CheckPhraseRules.
 
+## Clicks
+
+Modifier clicks ("shift click", "command click", "option click") are real mouse events posted with the modifier keys held (`Typist.click`). Never System Events `click at`: that is an Accessibility press, so the app never sees the modifier (shift-click selected one Finder item, command-click opened links in the same tab). Plain clicks may use an Accessibility press, except on items in lists/tables/file browsers, which need a real click to set the selection anchor. "command click" in a browser first tries `LinkOpener` (open the link under the pointer in a new tab).
+
 ## Spoken emoji
 
 `Output/EmojiPhrases.swift`: "<name> emoji" anywhere in dictation becomes the emoji ("thanks prayer hands emoji" -> "thanks 🙏"), live and final, before the post-process. Only phrases ending in "emoji" change. Add names or aliases to `EmojiPhrases.table`; cover them in CheckLogic.

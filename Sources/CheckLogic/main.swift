@@ -679,4 +679,21 @@ do {
     expect(field.text == "Great job 🙌 🙏", "emoji typed with normal spacing (got \(String(reflecting: field.text)))")
 }
 
+// "shift click" in a Finder list selected one item, not the range (Oct 5).
+// Modifier clicks went through System Events `click at`, which is an
+// Accessibility press: the app never saw Shift. They are now real mouse
+// events with the modifier held, and plain clicks on list items are real
+// clicks too (an Accessibility press sets no selection anchor).
+do {
+    let typist = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/Typist.swift"), encoding: .utf8)
+    expect(!typist.contains("systemEventsClick"), "modifier clicks no longer go through System Events")
+    expect(typist.contains("CGEvent(mouseEventSource: source"), "modifier clicks are real mouse events")
+    expect(typist.contains("postModifiers(source: source, flags: flags, keyDown: true)"), "modifier held during the click")
+    let field = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
+    expect(field.contains("if insideSelectableList(start) { return false }"), "list items get a real click, not an AX press")
+    expect(FieldEditor.selectableListRoles.contains("AXOutline") && FieldEditor.selectableListRoles.contains("AXList"),
+           "Finder list and icon views count as selectable lists")
+    expect(ClickGrammar.parse("shift click")?.flags == .maskShift, "shift click parses")
+}
+
 print("CheckLogic passed")
