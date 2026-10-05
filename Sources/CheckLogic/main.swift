@@ -642,4 +642,41 @@ do {
     expect(!liveSource.contains("com.apple.finder"), "Finder special case replaced by the general rule")
 }
 
+// Built-in spoken emoji: "<name> emoji" becomes the emoji, alone or
+// mid-sentence (Oct 5 request: raised hands, green checkmark, prayer hands,
+// slight smile, surprised face, laugh cry, ...).
+do {
+    let r = EmojiPhrases.replace
+    expect(r("raised hands emoji") == "🙌", "raised hands")
+    expect(r("Raised hands emoji") == "🙌", "Apple's capital ignored")
+    expect(r("hands emoji") == "🙌", "hands")
+    expect(r("green checkmark emoji") == "✅" && r("green check mark emoji") == "✅", "green checkmark, both spellings")
+    expect(r("prayer hands emoji") == "🙏", "prayer hands")
+    expect(r("slight smile emoji") == "🙂", "slight smile")
+    expect(r("surprised face emoji") == "😮", "surprised face")
+    expect(r("laugh cry emoji") == "😂" && r("crying laughing emoji") == "😂", "laugh cry")
+    expect(r("thumbs up emoji") == "👍", "thumbs up")
+    expect(r("Thanks so much prayer hands emoji") == "Thanks so much 🙏", "mid-sentence")
+    expect(r("Nice work raised hands emoji.") == "Nice work 🙌.", "spoken period after the emoji kept")
+    expect(r("fire emoji fire emoji") == "🔥 🔥", "two in a row")
+    expect(r("green check-mark emoji") == "✅", "hyphenated hearing")
+    expect(r("hands are full") == "hands are full", "no \"emoji\": words untouched")
+    expect(r("I love emoji") == "I love emoji", "the word emoji alone is untouched")
+    expect(r("banana emoji") == "banana emoji", "unknown name left as said")
+    expect(r("shands emoji") == "shands emoji", "name must be whole words")
+    // Through the real LivePhrase: spacing and capitals still apply.
+    let field = SimulatedField(box: .slack)
+    LivePhrase.simulatedField = field
+    defer { LivePhrase.simulatedField = nil }
+    LivePhrase.displayed = ""
+    LivePhrase.noteCommand()
+    LivePhrase.pendingLeadSpace = false
+    LivePhrase.show("great job raised")
+    LivePhrase.show("great job raised hands")
+    LivePhrase.show("great job raised hands emoji")
+    LivePhrase.commit("great job raised hands emoji")
+    LivePhrase.commit("prayer hands emoji")
+    expect(field.text == "Great job 🙌 🙏", "emoji typed with normal spacing (got \(String(reflecting: field.text)))")
+}
+
 print("CheckLogic passed")

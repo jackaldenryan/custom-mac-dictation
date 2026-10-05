@@ -90,7 +90,8 @@ public enum LivePhrase {
         }
     }
 
-    private static func shaped(_ text: String) -> String {
+    private static func shaped(_ spoken: String) -> String {
+        let text = EmojiPhrases.replace(spoken)
         if displayed.isEmpty {
             phraseSnapshot = InsertionContext.snapshot()
             if let app = lastTypedApp, app != frontAppID() {

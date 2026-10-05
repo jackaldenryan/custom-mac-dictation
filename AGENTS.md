@@ -32,6 +32,10 @@ Because every mark is spoken, the app types every mark it gets. Removed in 0.1.4
 
 `Output/PostProcess.swift` (`DefaultPostProcess`) is the only post-process: capitals, spacing, mid-sentence fit. There is no Post-process tab or JavaScript config anymore (removed in 0.1.40); change behavior in code and cover it in CheckPhraseRules.
 
+## Spoken emoji
+
+`Output/EmojiPhrases.swift`: "<name> emoji" anywhere in dictation becomes the emoji ("thanks prayer hands emoji" -> "thanks 🙏"), live and final, before the post-process. Only phrases ending in "emoji" change. Add names or aliases to `EmojiPhrases.table`; cover them in CheckLogic.
+
 ## Phrase / post-process rules
 
 Speech is not involved. These feed a fake field + fake transcript into the default post-process.
