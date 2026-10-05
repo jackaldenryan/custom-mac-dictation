@@ -717,4 +717,23 @@ do {
     expect(SelectionTransform.transform("Hello World", kind: .capitalize) == "Hello World", "other transforms unchanged")
 }
 
+// "remove spaces" typed "remove space" over the selection, then the command
+// found nothing selected (Oct 5): Apple's live "space" was not held back
+// because it is not a whole word of "spaces".
+do {
+    let s = AppSettings.default
+    expect(Router.shouldHoldLive(transcript: "remove space", state: .listening, settings: s), "live 'remove space' held for 'remove spaces'")
+    expect(Router.shouldHoldLive(transcript: "remove", state: .listening, settings: s), "first word held")
+    expect(Router.shouldHoldLive(transcript: "capitalized", state: .listening, settings: s), "inflected live word held")
+    expect(Router.shouldHoldLive(transcript: "delete th", state: .listening, settings: s), "partial last word held")
+    expect(!Router.shouldHoldLive(transcript: "comma", state: .listening, settings: s), "a lone comma still types live")
+    expect(!Router.shouldHoldLive(transcript: "removal of the", state: .listening, settings: s), "other words are typed live")
+    expect(!Router.shouldHoldLive(transcript: "remove the old file", state: .listening, settings: s), "longer dictation is typed live")
+    expect(!Router.shouldHoldLive(transcript: "hello there", state: .listening, settings: s), "dictation typed live")
+    expect(Router.holdsExact(phrase: "remove spaces", live: "remove space"), "stem match")
+    expect(!Router.holdsExact(phrase: "remove spaces", live: "re"), "under 3 letters: too short to tell")
+    expect(!Router.holdsExact(phrase: "command click", live: "comma"), "a lone cut-off first word is not held")
+    expect(CommandSpec.builtIns.contains { $0.action == .removeSpaces && $0.phrases.contains("remove space") }, "singular phrase also runs the command")
+}
+
 print("CheckLogic passed")

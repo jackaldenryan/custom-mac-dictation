@@ -128,15 +128,34 @@ public enum Router {
         }
     }
 
+    /// Live text that may still become this exact command is held back
+    /// instead of typed, so it can't type over the selection a command like
+    /// "remove spaces" needs. Apple's live words are often a shorter or
+    /// inflected form of the final word ("remove space" before "remove
+    /// spaces", "capitalized" before "capitalize"), so the last live word
+    /// only has to share a stem with the phrase's word (Oct 5: "remove
+    /// space" was typed over the selection, then the command found nothing).
+    public static func holdsExact(phrase: String, live: String) -> Bool {
+        if phrase == live { return true }
+        guard live.count >= 3 else { return false }
+        let said = live.split(separator: " ")
+        let words = phrase.split(separator: " ")
+        guard !said.isEmpty, said.count <= words.count else { return false }
+        for i in 0..<(said.count - 1) where said[i] != words[i] { return false }
+        let last = said[said.count - 1]
+        let target = words[said.count - 1]
+        if last == target || (last.count > target.count && last.hasPrefix(target)) { return true }
+        // A cut-off word only counts after a whole first word: "remove
+        // space" may become "remove spaces", but a lone "comma" is not the
+        // start of "command click".
+        return said.count > 1 && target.hasPrefix(last)
+    }
+
     private static func holds(_ command: CommandSpec, normalized: String) -> Bool {
         switch command.match {
         case .exact:
             return command.phrases.contains { phrase in
-                let name = TranscriptNormalizer.normalize(phrase)
-                if name == normalized { return true }
-                guard name.hasPrefix(normalized), normalized.count >= 3 else { return false }
-                let rest = name.dropFirst(normalized.count)
-                return rest.first == " " || rest.isEmpty
+                holdsExact(phrase: TranscriptNormalizer.normalize(phrase), live: normalized)
             }
         case .prefix:
             let prefix = command.prefix ?? ""
