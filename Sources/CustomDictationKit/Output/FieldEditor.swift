@@ -97,6 +97,14 @@ public enum FieldEditor {
         return false
     }
 
+    /// Selection length in the focused text field, when it is a native text
+    /// field AX can read reliably; nil for web engines, lists and anything
+    /// else (their AX selection can be stale or missing).
+    public static func focusedTextSelectionLength() -> Int? {
+        guard let el = focusedElement(), canEditText(el), axWritesAllowed(el) else { return nil }
+        return selectedRange(el)?.length
+    }
+
     public static func focusedLooksLikeStub() -> Bool {
         guard let el = focusedElement() else { return false }
         return isStub(el)

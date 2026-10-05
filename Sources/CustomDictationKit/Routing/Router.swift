@@ -220,6 +220,12 @@ public enum Router {
             } catch {
                 return .failed("I could not quit \(name)")
             }
+        case .deleteSelection:
+            LivePhrase.noteCommand()
+            DeleteSelection.run()
+            return .handled
+        case .removeSpaces:
+            return transform(.removeSpaces)
         case .capitalize:
             return transform(.capitalize)
         case .uppercase:

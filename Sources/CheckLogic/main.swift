@@ -696,4 +696,25 @@ do {
     expect(ClickGrammar.parse("shift click")?.flags == .maskShift, "shift click parses")
 }
 
+// "delete that" deletes whatever is selected (Oct 5).
+do {
+    expect(CommandSpec.builtIns.contains { $0.action == .deleteSelection && $0.phrases.contains("delete that") }, "delete that is built in")
+    expect(Router.isEarlyCommand(transcript: "delete that", state: .listening, settings: .default), "delete that runs without waiting for the final")
+    expect(DeleteSelection.key(bundleID: "com.apple.finder", textSelectionLength: nil) == .commandDelete, "Finder files go to the Trash")
+    expect(DeleteSelection.key(bundleID: "com.apple.finder", textSelectionLength: 4) == .delete, "Finder rename field: delete the selected text")
+    expect(DeleteSelection.key(bundleID: "com.apple.Notes", textSelectionLength: 5) == .delete, "selected text is deleted")
+    expect(DeleteSelection.key(bundleID: "com.apple.Notes", textSelectionLength: 0) == .nothing, "no selection: don't eat a character")
+    expect(DeleteSelection.key(bundleID: "com.tinyspeck.slackmacgap", textSelectionLength: nil) == .delete, "web fields: Delete key")
+}
+
+// "remove spaces" removes the spaces from the selected text (Oct 5).
+do {
+    expect(CommandSpec.builtIns.contains { $0.action == .removeSpaces && $0.phrases.contains("remove spaces") }, "remove spaces is built in")
+    expect(Router.isEarlyCommand(transcript: "remove spaces", state: .listening, settings: .default), "remove spaces runs early")
+    expect(SelectionTransform.transform("my file name", kind: .removeSpaces) == "myfilename", "spaces removed")
+    expect(SelectionTransform.transform("a\tb  c", kind: .removeSpaces) == "abc", "tabs and runs of spaces removed")
+    expect(SelectionTransform.transform("one two\nthree four", kind: .removeSpaces) == "onetwo\nthreefour", "line breaks kept")
+    expect(SelectionTransform.transform("Hello World", kind: .capitalize) == "Hello World", "other transforms unchanged")
+}
+
 print("CheckLogic passed")

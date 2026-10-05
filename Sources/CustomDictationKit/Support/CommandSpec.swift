@@ -27,6 +27,8 @@ public enum CommandAction: String, Codable, Sendable {
     case shortcut
     case openFile
     case click
+    case deleteSelection
+    case removeSpaces
 }
 
 public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
@@ -167,6 +169,8 @@ public struct CommandSpec: Codable, Equatable, Sendable, Identifiable {
         case .shortcut: return "Shortcut"
         case .openFile: return "Open file"
         case .click: return "Click"
+        case .deleteSelection: return "Delete selection"
+        case .removeSpaces: return "Remove spaces"
         }
     }
 

@@ -1,0 +1,14 @@
+{
+  "action": "deleteSelection",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.delete-that",
+  "match": "exact",
+  "phrases": [
+    "delete that",
+    "delete selection",
+    "delete the selection"
+  ],
+  "priority": 230,
+  "when": "listening"
+}

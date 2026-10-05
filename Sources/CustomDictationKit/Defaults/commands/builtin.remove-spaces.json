@@ -1,0 +1,15 @@
+{
+  "action": "removeSpaces",
+  "builtin": true,
+  "enabled": true,
+  "id": "builtin.remove-spaces",
+  "match": "exact",
+  "phrases": [
+    "remove spaces",
+    "remove the spaces",
+    "remove spaces from that",
+    "remove all spaces"
+  ],
+  "priority": 230,
+  "when": "listening"
+}

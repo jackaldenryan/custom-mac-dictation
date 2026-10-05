@@ -10,6 +10,9 @@ public enum SelectionTransform {
         case capitalize
         case uppercase
         case lowercase
+        /// "remove spaces": "my file name" -> "myfilename". Spaces and tabs
+        /// go; line breaks stay.
+        case removeSpaces
     }
 
     public static func apply(_ kind: Kind) throws {
@@ -46,7 +49,7 @@ public enum SelectionTransform {
         }
     }
 
-    private static func transform(_ raw: String, kind: Kind) -> String {
+    public static func transform(_ raw: String, kind: Kind) -> String {
         switch kind {
         case .capitalize:
             return raw.localizedCapitalized
@@ -54,6 +57,8 @@ public enum SelectionTransform {
             return raw.localizedUppercase
         case .lowercase:
             return raw.localizedLowercase
+        case .removeSpaces:
+            return String(raw.filter { !($0.isWhitespace && !$0.isNewline) })
         }
     }
 
