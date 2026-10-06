@@ -775,6 +775,11 @@ do {
     let sessionSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
     expect(sessionSource.contains("MicrophoneWatcher"), "session watches for mics coming and going")
     expect(sessionSource.contains("engine.switchMicrophone"), "a device change moves capture to the new mic")
+    // Menu bar showed no mic checked after unplugging the 1st choice (Oct 6):
+    // it checked slot 1, which was no longer in the list.
+    let menuSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/StatusItemController.swift"), encoding: .utf8)
+    expect(menuSource.contains("MicrophonePriority.resolve(store.settings.microphonePriority"), "menu checks the mic in use, not slot 1")
+    expect(!menuSource.contains("microphonePriority.first?.uid"), "menu does not check an unplugged first choice")
 }
 
 print("CheckLogic passed")

@@ -59,14 +59,17 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         let defaultItem = NSMenuItem(title: "System default", action: #selector(chooseMicrophone(_:)), keyEquivalent: "")
         defaultItem.target = self
         defaultItem.representedObject = ""
-        let first = store.settings.microphonePriority.first?.uid
-        if first == nil { defaultItem.state = .on }
+        // Check the mic listening would use now: the first listed one that is
+        // plugged in, not slot 1 (which may be unplugged).
+        let available = AudioCapture.listMicrophones()
+        let inUse = MicrophonePriority.resolve(store.settings.microphonePriority, available: available)?.uid
+        if inUse == nil { defaultItem.state = .on }
         micMenu.addItem(defaultItem)
-        for mic in AudioCapture.listMicrophones() {
+        for mic in available {
             let item = NSMenuItem(title: mic.name, action: #selector(chooseMicrophone(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = mic.uid
-            if first == mic.uid { item.state = .on }
+            if inUse == mic.uid { item.state = .on }
             micMenu.addItem(item)
         }
         let micRoot = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
