@@ -71,7 +71,6 @@ private struct AppRootView: View {
     @ObservedObject var updater: UpdateController
     var onRunSetup: () -> Void = {}
     @State private var settings: AppSettings = .default
-    @State private var mics: [MicrophoneDevice] = []
     @State private var logText = ""
     @State private var scratch = ""
     @State private var accessibilityTrusted = AXIsProcessTrusted()
@@ -137,7 +136,6 @@ private struct AppRootView: View {
         .onAppear {
             settings = store.settings
             customFinalizeText = Self.finalizeFieldText(settings.finalizeDelaySeconds)
-            mics = AudioCapture.listMicrophones()
             logText = DiagnosticLog.tail()
             accessibilityTrusted = AXIsProcessTrusted()
         }
@@ -222,13 +220,26 @@ private struct AppRootView: View {
                     .lineLimit(3)
             }
             Form {
-                Section("Microphone") {
-                    Picker("Input", selection: microphoneBinding) {
-                        Text("System default").tag(Optional<String>.none)
-                        ForEach(mics) { mic in
-                            Text(mic.name).tag(Optional(mic.uid))
+                Section {
+                    ForEach(0..<min(settings.microphonePriority.count + 1, MicrophonePriority.maxLevels), id: \.self) { slot in
+                        Picker(Self.micSlotTitle(slot), selection: microphoneBinding(slot)) {
+                            Text(slot == 0 ? "System default" : "None").tag(Optional<String>.none)
+                            ForEach(micChoices(slot)) { mic in
+                                Text(mic.name).tag(Optional(mic.uid))
+                            }
                         }
                     }
+                    if !session.microphoneInUse.isEmpty {
+                        Text("In use: \(session.microphoneInUse)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Microphone")
+                } footer: {
+                    Text("Uses the first one that is plugged in, then the system default.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Section("Startup") {
                     Toggle("Open at login", isOn: launchBinding)
@@ -717,15 +728,34 @@ private struct AppRootView: View {
         )
     }
 
-    private var microphoneBinding: Binding<String?> {
+    private static func micSlotTitle(_ slot: Int) -> String {
+        ["1st choice", "2nd choice", "3rd choice"][slot]
+    }
+
+    /// Plugged-in mics, plus this slot's saved mic when it is unplugged.
+    private func micChoices(_ slot: Int) -> [MicrophoneDevice] {
+        var choices = session.microphones
+        let saved = settings.microphonePriority
+        if slot < saved.count, !choices.contains(where: { $0.uid == saved[slot].uid }) {
+            let name = saved[slot].name.isEmpty ? "Saved microphone" : saved[slot].name
+            choices.append(MicrophoneDevice(uid: saved[slot].uid, name: "\(name) (not connected)"))
+        }
+        return choices
+    }
+
+    private func microphoneBinding(_ slot: Int) -> Binding<String?> {
         Binding(
-            get: { settings.microphoneUID },
+            get: {
+                let saved = settings.microphonePriority
+                return slot < saved.count ? saved[slot].uid : nil
+            },
             set: { uid in
-                settings.microphoneUID = uid
-                persist()
-                if session.state == .listening {
-                    Task { await session.startListening() }
+                let mic = uid.flatMap { uid in
+                    session.microphones.first { $0.uid == uid } ?? settings.microphonePriority.first { $0.uid == uid }
                 }
+                settings.microphonePriority = MicrophonePriority.setting(slot, to: mic, in: settings.microphonePriority)
+                persist()
+                session.refreshMicrophone()
             }
         )
     }

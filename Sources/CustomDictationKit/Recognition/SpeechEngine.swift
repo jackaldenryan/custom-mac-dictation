@@ -196,6 +196,17 @@ public final class SpeechEngine: @unchecked Sendable {
         DiagnosticLog.line("Capture paused after \(bufferCount) buffers")
     }
 
+    /// Moves capture to another microphone without rebuilding the analyzer
+    /// (the capture converts any mic to the analyzer's format).
+    public func switchMicrophone(to microphoneUID: String?) throws {
+        guard analyzer != nil else { return }
+        lastMicrophoneUID = microphoneUID
+        guard capture != nil else { return }
+        pauseCapture()
+        try startCapture(microphoneUID: microphoneUID)
+        DiagnosticLog.line("Capture moved to \(microphoneUID ?? "system default")")
+    }
+
     private func startCapture(microphoneUID: String?) throws {
         guard capture == nil else { return }
         guard let format = outputFormat, let continuation = inputContinuation else {

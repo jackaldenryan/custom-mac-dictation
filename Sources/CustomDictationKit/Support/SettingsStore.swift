@@ -84,7 +84,8 @@ public struct ImportedCommand: Codable, Equatable, Sendable, Identifiable {
 
 public struct AppSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
-    public var microphoneUID: String?
+    /// Up to three microphones, most preferred first (see MicrophonePriority).
+    public var microphonePriority: [MicrophoneDevice]
     public var vocabulary: [VocabEntry]
     public var commands: [CommandSpec]
     public var launchAtLogin: Bool
@@ -103,7 +104,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static var `default`: AppSettings {
         AppSettings(
             hasCompletedOnboarding: false,
-            microphoneUID: nil,
+            microphonePriority: [],
             vocabulary: [],
             commands: CommandSpec.builtIns,
             launchAtLogin: true,
@@ -117,7 +118,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case hasCompletedOnboarding
-        case microphoneUID
+        case microphonePriority
+        case microphoneUID // older single-mic setting, read only
         case vocabulary
         case commands
         case launchAtLogin
@@ -130,7 +132,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(
         hasCompletedOnboarding: Bool,
-        microphoneUID: String?,
+        microphonePriority: [MicrophoneDevice],
         vocabulary: [VocabEntry],
         commands: [CommandSpec],
         launchAtLogin: Bool,
@@ -141,7 +143,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         disableFinalizeDelay: Bool = false
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
-        self.microphoneUID = microphoneUID
+        self.microphonePriority = MicrophonePriority.normalized(microphonePriority)
         self.vocabulary = vocabulary
         self.commands = commands
         self.launchAtLogin = launchAtLogin
@@ -155,7 +157,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hasCompletedOnboarding = try container.decode(Bool.self, forKey: .hasCompletedOnboarding)
-        microphoneUID = try container.decodeIfPresent(String.self, forKey: .microphoneUID)
+        microphonePriority = MicrophonePriority.normalized(
+            try container.decodeIfPresent([MicrophoneDevice].self, forKey: .microphonePriority)
+                ?? MicrophonePriority.migrated(legacyUID: try container.decodeIfPresent(String.self, forKey: .microphoneUID))
+        )
         vocabulary = try container.decodeIfPresent([VocabEntry].self, forKey: .vocabulary) ?? []
         if let specs = try? container.decode([CommandSpec].self, forKey: .commands) {
             commands = specs
@@ -181,7 +186,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
-        try container.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
+        try container.encode(microphonePriority, forKey: .microphonePriority)
         try container.encode(vocabulary, forKey: .vocabulary)
         try container.encode(commands, forKey: .commands)
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
@@ -270,7 +275,7 @@ public final class SettingsStore: @unchecked Sendable {
         }
         if let prefs = ConfigFolder.loadPrefs() {
             cached.hasCompletedOnboarding = prefs.hasCompletedOnboarding
-            cached.microphoneUID = prefs.microphoneUID
+            cached.microphonePriority = prefs.microphonePriority
             cached.launchAtLogin = prefs.launchAtLogin
             cached.preferredListeningState = prefs.preferredListeningState
         }

@@ -59,13 +59,14 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
         let defaultItem = NSMenuItem(title: "System default", action: #selector(chooseMicrophone(_:)), keyEquivalent: "")
         defaultItem.target = self
         defaultItem.representedObject = ""
-        if store.settings.microphoneUID == nil { defaultItem.state = .on }
+        let first = store.settings.microphonePriority.first?.uid
+        if first == nil { defaultItem.state = .on }
         micMenu.addItem(defaultItem)
         for mic in AudioCapture.listMicrophones() {
             let item = NSMenuItem(title: mic.name, action: #selector(chooseMicrophone(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = mic.uid
-            if store.settings.microphoneUID == mic.uid { item.state = .on }
+            if first == mic.uid { item.state = .on }
             micMenu.addItem(item)
         }
         let micRoot = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
@@ -145,11 +146,9 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func chooseMicrophone(_ sender: NSMenuItem) {
         let uid = sender.representedObject as? String
-        let value = (uid?.isEmpty == false) ? uid : nil
-        _ = store.update { $0.microphoneUID = value }
-        if session.state == .listening {
-            Task { await session.startListening() }
-        }
+        let mic = AudioCapture.listMicrophones().first { $0.uid == uid }
+        _ = store.update { $0.microphonePriority = MicrophonePriority.promoting(mic, in: $0.microphonePriority) }
+        session.refreshMicrophone()
     }
 
     @objc private func openSettings() {

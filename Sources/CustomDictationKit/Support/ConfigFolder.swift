@@ -357,20 +357,21 @@ public struct DelaySettings: Codable, Equatable, Sendable {
 
 public struct PrefsSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
-    public var microphoneUID: String?
+    public var microphonePriority: [MicrophoneDevice]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
 
     public init(_ settings: AppSettings) {
         hasCompletedOnboarding = settings.hasCompletedOnboarding
-        microphoneUID = settings.microphoneUID
+        microphonePriority = settings.microphonePriority
         launchAtLogin = settings.launchAtLogin
         preferredListeningState = settings.preferredListeningState
     }
 
     enum CodingKeys: String, CodingKey {
         case hasCompletedOnboarding
-        case microphoneUID
+        case microphonePriority
+        case microphoneUID // older single-mic setting, read only
         case launchAtLogin
         case preferredListeningState
     }
@@ -378,7 +379,10 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         hasCompletedOnboarding = try c.decode(Bool.self, forKey: .hasCompletedOnboarding)
-        microphoneUID = try c.decodeIfPresent(String.self, forKey: .microphoneUID)
+        microphonePriority = MicrophonePriority.normalized(
+            try c.decodeIfPresent([MicrophoneDevice].self, forKey: .microphonePriority)
+                ?? MicrophonePriority.migrated(legacyUID: try c.decodeIfPresent(String.self, forKey: .microphoneUID))
+        )
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
     }
@@ -386,7 +390,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
-        try c.encodeIfPresent(microphoneUID, forKey: .microphoneUID)
+        try c.encode(microphonePriority, forKey: .microphonePriority)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(preferredListeningState, forKey: .preferredListeningState)
     }

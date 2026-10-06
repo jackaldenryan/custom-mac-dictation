@@ -3,10 +3,47 @@ import CoreAudio
 import CoreMedia
 import Foundation
 
-public struct MicrophoneDevice: Identifiable, Equatable, Sendable {
+public struct MicrophoneDevice: Identifiable, Codable, Equatable, Hashable, Sendable {
     public var id: String { uid }
     public var uid: String
     public var name: String
+
+    public init(uid: String, name: String) {
+        self.uid = uid
+        self.name = name
+    }
+}
+
+/// Calls back on the main actor when microphones are plugged in or removed,
+/// or the system default input changes.
+public final class MicrophoneWatcher {
+    private let block: AudioObjectPropertyListenerBlock
+    private static let selectors = [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice]
+
+    public init(onChange: @escaping @Sendable @MainActor () -> Void) {
+        block = { _, _ in
+            Task { @MainActor in onChange() }
+        }
+        for selector in Self.selectors {
+            var address = Self.address(selector)
+            AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
+        }
+    }
+
+    deinit {
+        for selector in Self.selectors {
+            var address = Self.address(selector)
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
+        }
+    }
+
+    private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+    }
 }
 
 public final class AudioCapture {
@@ -142,6 +179,20 @@ public final class AudioCapture {
             return nil
         }
         return out
+    }
+
+    /// The uid of the current system default input device.
+    public static func defaultInputUID() -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr,
+              id != 0 else { return nil }
+        return stringProperty(id, kAudioDevicePropertyDeviceUID)
     }
 
     private static func selectEngineInput(_ input: AVAudioInputNode, uid: String) throws {

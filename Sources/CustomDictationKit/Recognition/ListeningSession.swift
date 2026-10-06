@@ -14,13 +14,20 @@ public final class ListeningSession: ObservableObject {
     @Published public private(set) var lastFinal = ""
     @Published public private(set) var lastRoute = ""
     @Published public var lastError = ""
+    /// Microphones plugged in now, kept current as devices come and go.
+    @Published public private(set) var microphones: [MicrophoneDevice] = []
+    /// Name of the input capture is using ("" when off).
+    @Published public private(set) var microphoneInUse = ""
     public var onStateChange: ((ListeningState) -> Void)?
     public var onErrorMessage: ((String) -> Void)?
 
     private let engine = SpeechEngine()
     private let store: SettingsStore
     private var startGeneration = 0
-    private var lastMicrophoneUID: String?
+    /// Which input capture is using (MicrophonePriority.inputKey).
+    private var inputKey: String?
+    private var micWatcher: MicrophoneWatcher?
+    private var micChangeTask: Task<Void, Never>?
     private var earlyCommandTask: Task<Void, Never>?
     private var earlyCommandText = ""
     private var ranEarly: EarlyCommand.Ran?
@@ -41,6 +48,10 @@ public final class ListeningSession: ObservableObject {
             Task { @MainActor in
                 self?.clearStaleHearing()
             }
+        }
+        microphones = AudioCapture.listMicrophones()
+        micWatcher = MicrophoneWatcher { [weak self] in
+            self?.microphonesChanged()
         }
         engine.onError = { [weak self] error in
             Task { @MainActor in
@@ -66,9 +77,12 @@ public final class ListeningSession: ObservableObject {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
             engine.disableForcedFinalize = settings.disableFinalizeDelay
-            lastMicrophoneUID = settings.microphoneUID
+            let mic = chooseMicrophone()
+            inputKey = mic.key
+            microphoneInUse = mic.label
+            DiagnosticLog.line("Microphone: \(mic.label)")
             try await engine.start(
-                microphoneUID: settings.microphoneUID,
+                microphoneUID: mic.uid,
                 vocabulary: settings.vocabulary.filter(\.enabled),
                 commandPhrases: settings.commands.filter(\.enabled).flatMap(\.phrases).map {
                     $0.replacingOccurrences(of: " {app}", with: "").replacingOccurrences(of: "{app}", with: "")
@@ -76,6 +90,7 @@ public final class ListeningSession: ObservableObject {
             )
             guard generation == startGeneration else { return }
             DiagnosticLog.line("Listening")
+            refreshMicrophone() // a mic may have come or gone while starting
         } catch {
             guard generation == startGeneration else { return }
             DiagnosticLog.line("Start failed: \(error.localizedDescription)")
@@ -103,8 +118,49 @@ public final class ListeningSession: ObservableObject {
         LivePhrase.keepAndUnhighlight()
         setState(.off, persist: persist)
         await engine.stop()
-        lastMicrophoneUID = nil
+        inputKey = nil
+        microphoneInUse = ""
         DiagnosticLog.line("Stopped")
+    }
+
+    /// The first listed microphone that is plugged in, else the system default.
+    private func chooseMicrophone() -> (uid: String?, key: String, label: String) {
+        let available = AudioCapture.listMicrophones()
+        let resolved = MicrophonePriority.resolve(store.settings.microphonePriority, available: available)
+        let key = MicrophonePriority.inputKey(resolved: resolved, systemDefaultUID: AudioCapture.defaultInputUID())
+        guard let resolved else { return (nil, key, "system default") }
+        let name = available.first { $0.uid == resolved.uid }?.name ?? resolved.name
+        return (resolved.uid, key, name)
+    }
+
+    /// A mic was plugged in or removed: wait for the burst of CoreAudio
+    /// notifications to settle, then move capture if the choice changed.
+    private func microphonesChanged() {
+        micChangeTask?.cancel()
+        micChangeTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled, let self else { return }
+            self.microphones = AudioCapture.listMicrophones()
+            self.refreshMicrophone()
+        }
+    }
+
+    /// Re-picks the microphone (after a device change or a settings change)
+    /// and moves capture to it when it differs from the one in use.
+    public func refreshMicrophone() {
+        guard state != .off, inputKey != nil, engine.isRunning else { return }
+        let mic = chooseMicrophone()
+        guard mic.key != inputKey else { return }
+        inputKey = mic.key
+        microphoneInUse = mic.label
+        DiagnosticLog.line("Microphone changed: \(mic.label)")
+        do {
+            try engine.switchMicrophone(to: mic.uid)
+        } catch {
+            DiagnosticLog.line("Microphone switch failed: \(error.localizedDescription)")
+            lastError = error.localizedDescription
+            onErrorMessage?(error.localizedDescription)
+        }
     }
 
     public func setFinalizeDelay(_ seconds: Double) {

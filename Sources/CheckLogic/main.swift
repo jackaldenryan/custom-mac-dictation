@@ -736,4 +736,45 @@ do {
     expect(CommandSpec.builtIns.contains { $0.action == .removeSpaces && $0.phrases.contains("remove space") }, "singular phrase also runs the command")
 }
 
+// Microphone priority (Oct 6): up to three mics in order; unplugging the
+// first falls back to the next one plugged in, then the system default.
+do {
+    let ext = MicrophoneDevice(uid: "usb-mic", name: "USB Mic")
+    let mbp = MicrophoneDevice(uid: "builtin", name: "MacBook Pro Microphone")
+    let cam = MicrophoneDevice(uid: "webcam", name: "Webcam")
+    let other = MicrophoneDevice(uid: "other", name: "Other")
+    let list = [ext, mbp, cam]
+    expect(MicrophonePriority.resolve(list, available: [mbp, cam, ext]) == ext, "first choice used when plugged in")
+    expect(MicrophonePriority.resolve(list, available: [cam, mbp]) == mbp, "external unplugged: falls back to MacBook mic")
+    expect(MicrophonePriority.resolve(list, available: [cam]) == cam, "then the third choice")
+    expect(MicrophonePriority.resolve(list, available: [other]) == nil, "none plugged in: system default")
+    expect(MicrophonePriority.resolve([], available: [ext]) == nil, "empty list: system default")
+    expect(MicrophonePriority.normalized(list + [other]).count == 3, "only three levels")
+    expect(MicrophonePriority.normalized([ext, ext, MicrophoneDevice(uid: "", name: ""), mbp]) == [ext, mbp], "no repeats or blanks")
+    expect(MicrophonePriority.setting(1, to: mbp, in: [ext]) == [ext, mbp], "set second choice")
+    expect(MicrophonePriority.setting(0, to: mbp, in: [ext, mbp]) == [mbp, ext], "choosing a listed mic swaps places")
+    expect(MicrophonePriority.setting(0, to: nil, in: [ext, mbp, cam]) == [mbp, cam], "clearing a slot closes the gap")
+    expect(MicrophonePriority.setting(3, to: other, in: list) == list, "no fourth level")
+    expect(MicrophonePriority.promoting(cam, in: [ext, mbp]) == [cam, ext, mbp], "menu choice becomes first, keeps the rest")
+    expect(MicrophonePriority.promoting(other, in: list) == [other, ext, mbp], "promoting keeps three")
+    expect(MicrophonePriority.promoting(nil, in: list).isEmpty, "System default clears the list")
+    expect(MicrophonePriority.inputKey(resolved: ext, systemDefaultUID: "builtin") != MicrophonePriority.inputKey(resolved: nil, systemDefaultUID: "builtin"), "switching to the default is a change")
+    expect(MicrophonePriority.inputKey(resolved: nil, systemDefaultUID: "a") != MicrophonePriority.inputKey(resolved: nil, systemDefaultUID: "b"), "a new system default is a change")
+    expect(MicrophonePriority.inputKey(resolved: ext, systemDefaultUID: "a") == MicrophonePriority.inputKey(resolved: ext, systemDefaultUID: "b"), "default changes ignored while a listed mic is in use")
+
+    let oldPrefs = Data(#"{"hasCompletedOnboarding":true,"microphoneUID":"usb-mic"}"#.utf8)
+    let prefs = try? JSONDecoder().decode(PrefsSettings.self, from: oldPrefs)
+    expect(prefs?.microphonePriority.map(\.uid) == ["usb-mic"], "older settings.json mic becomes first choice")
+    let oldApp = Data(#"{"hasCompletedOnboarding":true,"microphoneUID":"usb-mic"}"#.utf8)
+    expect((try? JSONDecoder().decode(AppSettings.self, from: oldApp))?.microphonePriority.map(\.uid) == ["usb-mic"], "older app settings migrate too")
+    var saved = AppSettings.default
+    saved.microphonePriority = list
+    let round = (try? JSONEncoder().encode(PrefsSettings(saved))).flatMap { try? JSONDecoder().decode(PrefsSettings.self, from: $0) }
+    expect(round?.microphonePriority == list, "priority list saved in settings.json")
+
+    let sessionSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(sessionSource.contains("MicrophoneWatcher"), "session watches for mics coming and going")
+    expect(sessionSource.contains("engine.switchMicrophone"), "a device change moves capture to the new mic")
+}
+
 print("CheckLogic passed")

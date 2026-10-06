@@ -87,7 +87,7 @@ private struct OnboardingView: View {
         .buttonStyle(PressableButtonStyle())
         .onAppear {
             mics = AudioCapture.listMicrophones()
-            selectedUID = store.settings.microphoneUID
+            selectedUID = store.settings.microphonePriority.first?.uid
         }
     }
 
@@ -173,7 +173,8 @@ private struct OnboardingView: View {
                 status = error.localizedDescription
             }
         case .micPicker:
-            _ = store.update { $0.microphoneUID = selectedUID }
+            let mic = mics.first { $0.uid == selectedUID }
+            _ = store.update { $0.microphonePriority = MicrophonePriority.promoting(mic, in: $0.microphonePriority) }
             step = .done
         case .done:
             _ = store.update {
