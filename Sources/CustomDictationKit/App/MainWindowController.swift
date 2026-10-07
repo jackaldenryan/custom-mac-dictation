@@ -256,7 +256,12 @@ private struct AppRootView: View {
                                 .disabled(settings.sounds[event].isEmpty)
                         }
                     }
-                    Toggle("Say failures out loud", isOn: speakFailuresBinding)
+                    HStack {
+                        Toggle("Say failures out loud", isOn: speakFailuresBinding)
+                        Spacer()
+                        Button("Test") { SpokenFeedback.shared.say(SoundSettings.sampleFailure) }
+                            .buttonStyle(.bordered)
+                    }
                 } header: {
                     Text("Sounds")
                 } footer: {

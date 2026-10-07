@@ -21,10 +21,10 @@ public enum SoundEvent: String, CaseIterable, Codable, Sendable, Identifiable {
     /// "" means no sound.
     public var defaultSound: String {
         switch self {
-        case .startListening: return "Pop"
-        case .stopListening: return "Tink"
-        case .commandRan: return "Morse"
-        case .commandFailed: return ""
+        case .startListening: return "Blow"
+        case .stopListening: return "Bottle"
+        case .commandRan: return "Purr"
+        case .commandFailed: return "Basso"
         }
     }
 }
@@ -38,6 +38,8 @@ public struct SoundSettings: Codable, Equatable, Sendable {
     public var speakFailures: Bool
 
     public static let `default` = SoundSettings(sounds: [:], speakFailures: true)
+    /// What the spoken-failure Test button says.
+    public static let sampleFailure = "I could not find Zoom"
 
     public init(sounds: [String: String] = [:], speakFailures: Bool = true) {
         self.sounds = sounds

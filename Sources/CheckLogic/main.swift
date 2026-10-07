@@ -848,14 +848,14 @@ do {
 // not find Zoom") can be turned off.
 do {
     let d = SoundSettings.default
-    expect(d[.startListening] == "Pop" && d[.stopListening] == "Tink" && d[.commandRan] == "Morse", "defaults keep the old sounds")
-    expect(d[.commandFailed] == "", "no failure sound by default (it is spoken)")
+    expect(d[.startListening] == "Blow" && d[.stopListening] == "Bottle", "start Blow, stop Bottle (Oct 7)")
+    expect(d[.commandRan] == "Purr" && d[.commandFailed] == "Basso", "command Purr, failure Basso (Oct 7)")
     expect(d.speakFailures, "failures spoken by default, as before")
     var s = d
     s[.startListening] = "Glass"
     s[.commandRan] = ""
     s.speakFailures = false
-    expect(s[.startListening] == "Glass" && s[.stopListening] == "Tink", "each event set on its own")
+    expect(s[.startListening] == "Glass" && s[.stopListening] == "Bottle", "each event set on its own")
     expect(s[.commandRan] == "", "a sound can be None")
     var app = AppSettings.default
     app.sounds = s
@@ -867,7 +867,7 @@ do {
     expect((try? JSONDecoder().decode(PrefsSettings.self, from: old))?.sounds == .default, "older settings.json gets the default sounds")
     let partial = Data(#"{"sounds":{"startListening":"Hero"}}"#.utf8)
     let p = try? JSONDecoder().decode(SoundSettings.self, from: partial)
-    expect(p?[.startListening] == "Hero" && p?[.stopListening] == "Tink" && p?.speakFailures == true, "missing entries fall back to defaults")
+    expect(p?[.startListening] == "Hero" && p?[.stopListening] == "Bottle" && p?.speakFailures == true, "missing entries fall back to defaults")
     expect(SoundEvent.allCases.count == 4, "four sound events")
     let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
     expect(session.contains("if sounds.speakFailures") && session.contains("SpokenFeedback.shared.say(message)"), "spoken failures follow the toggle")
@@ -876,7 +876,8 @@ do {
         expect(session.contains("SoundFeedback.play(\(event), settings: store.settings.sounds)"), "\(event) uses its setting")
     }
     let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)
-    expect(window.contains("Button(\"Test\")"), "each sound has a Test button")
+    expect(window.contains("Button(\"Test\") { SoundFeedback.play(named:"), "each sound has a Test button")
+    expect(window.contains("SpokenFeedback.shared.say(SoundSettings.sampleFailure)"), "spoken failures have a Test button")
     expect(!window.contains("SoundFeedback.play(named: name)"), "choosing a sound does not play it")
 }
 
