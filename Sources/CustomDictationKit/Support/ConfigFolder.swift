@@ -264,7 +264,9 @@ public enum ConfigFolder {
 
     ## settings.json
 
-    Microphones (up to three, in order), login, onboarding, sounds, and hold-to-talk.
+    Microphones (up to three, in order), login, onboarding, sounds, hold-to-talk, and logging.
+
+    `diagnosticLogging` (default false): save a log of what the app hears and does to `~/Library/Logs/CustomDictation/`. Off: nothing is logged.
 
     `holdToTalk.enabled` (default true for new installs): the mic is off until you hold `holdToTalk.key` (default Right Command, key code 54); what you said is typed when you let go. False: always listening.
 
@@ -366,6 +368,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var preferredListeningState: ListeningState
     public var sounds: SoundSettings
     public var holdToTalk: HoldToTalkSettings
+    public var diagnosticLogging: Bool
 
     public init(_ settings: AppSettings) {
         hasCompletedOnboarding = settings.hasCompletedOnboarding
@@ -374,6 +377,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         preferredListeningState = settings.preferredListeningState
         sounds = settings.sounds
         holdToTalk = settings.holdToTalk
+        diagnosticLogging = settings.diagnosticLogging
     }
 
     enum CodingKeys: String, CodingKey {
@@ -384,6 +388,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         case preferredListeningState
         case sounds
         case holdToTalk
+        case diagnosticLogging
     }
 
     public init(from decoder: Decoder) throws {
@@ -398,6 +403,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         sounds = try c.decodeIfPresent(SoundSettings.self, forKey: .sounds) ?? .default
         // Saved before hold-to-talk existed: keep always listening.
         holdToTalk = try c.decodeIfPresent(HoldToTalkSettings.self, forKey: .holdToTalk) ?? .legacy
+        diagnosticLogging = try c.decodeIfPresent(Bool.self, forKey: .diagnosticLogging) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -408,5 +414,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         try c.encode(preferredListeningState, forKey: .preferredListeningState)
         try c.encode(sounds, forKey: .sounds)
         try c.encode(holdToTalk, forKey: .holdToTalk)
+        try c.encode(diagnosticLogging, forKey: .diagnosticLogging)
     }
 }

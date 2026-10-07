@@ -993,60 +993,31 @@ do {
     expect(promptSource.contains("visible.maxX - panel.frame.width") && promptSource.contains("visible.minY + margin"), "bottom-right corner")
 }
 
-// Apple's final is trusted, including when it drops words: its finals are
-// real words and usually better than the live text. One exception: the
-// final clips the first word to a stray letter (Oct 7: "hi my name is
-// Jack.r I will go outside" instead of "... Jack. Later I will go
-// outside"). Then the live first word is kept.
+// Logging is a setting, off by default (Oct 7): log lines include what you
+// dictate. Off means nothing is written anywhere.
 do {
-    let r = FinalReconcile.restoreClippedStart
-    // Stray letters from the logs (live, final).
-    expect(r("Later I will go outside", "r I will go outside") == "Later I will go outside", "Jack's report: r -> Later")
-    expect(r("Thanks, are they primarily interested", "X, are they primarily interested") == "Thanks, are they primarily interested", "X -> Thanks")
-    expect(r("they have merged this PR", "K have merged this PR") == "they have merged this PR", "K -> they")
-    expect(r("key account review reviews, sales pipeline", "P account review reviews, sales pipeline") == "key account review reviews, sales pipeline", "P -> key")
-    expect(r("our", "P") == "our", "single word clipped to a letter")
-    expect(r("Later", "r") == "Later", "single clipped word restored")
-    expect(r("and then later I will", "r I will") == "and then later I will", "live opening kept up to the clipped word")
-    // The final's own wording is kept for the part it did hear.
-    expect(r("later I will go outside", "r I will go outside.") == "later I will go outside.", "final's punctuation kept")
-    expect(r("Later I will", "r I Will") == "Later I Will", "final's casing kept")
-    // Dropped or changed whole words: trust the final.
-    expect(r("but not the rainbow pride flag", "the rainbow pride flag") == "the rainbow pride flag", "dropped words: final wins")
-    expect(r("doesn't mean", "mean") == "mean", "dropped word: final wins")
-    expect(r("fast faster", "faster") == "faster", "stutter cleanup: final wins")
-    expect(r("immigration guide", "migration guide") == "migration guide", "real-word correction: final wins")
-    expect(r("supporting the knowledge", "porting the knowledge") == "porting the knowledge", "any real word: final wins")
-    expect(r("those guys been seen with", "two guys been seen with") == "two guys been seen with", "corrected word: final wins")
-    expect(r("free to", "tore") == "tore", "different words: final wins")
-    // Real one-letter words and spelled letters stay.
-    expect(r("the plan", "a plan") == "a plan", "\"a\" is a word")
-    expect(r("they think", "I think") == "I think", "\"I\" is a word")
-    expect(r("Z scaler", "Z scaler") == "Z scaler", "spelled letter in both")
-    expect(r("Q metrics, workflow status", "Q metrics, workflow status, etc.") == "Q metrics, workflow status, etc.", "final longer: final wins")
-    expect(r("key account review", "P account reviews") == "P account reviews", "rest differs: final wins")
-    expect(r("hello there", "hello there") == "hello there", "same text unchanged")
-    expect(r("", "r") == "r", "no live text: final as is")
-    expect(r("hello", "") == "", "empty final stays empty")
+    expect(!AppSettings.default.diagnosticLogging, "new installs: no log")
+    let old = Data(#"{"hasCompletedOnboarding":true}"#.utf8)
+    expect((try? JSONDecoder().decode(PrefsSettings.self, from: old))?.diagnosticLogging == false, "existing settings.json: logging off")
+    expect((try? JSONDecoder().decode(AppSettings.self, from: old))?.diagnosticLogging == false, "existing app settings: logging off")
+    var app = AppSettings.default
+    app.diagnosticLogging = true
+    let round = (try? JSONEncoder().encode(PrefsSettings(app))).flatMap { try? JSONDecoder().decode(PrefsSettings.self, from: $0) }
+    expect(round?.diagnosticLogging == true, "logging choice saved in settings.json")
+    let log = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Support/DiagnosticLog.swift"), encoding: .utf8)
+    expect(log.contains("guard isEnabled, savesToFile else { return }"), "off: nothing logged, not even to stderr")
+    expect(log.contains("savesToFile = false"), "off until settings turn it on")
+    let store = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Support/SettingsStore.swift"), encoding: .utf8)
+    expect(store.components(separatedBy: "DiagnosticLog.savesToFile = cached.diagnosticLogging").count == 3, "applied at load and on every change")
+}
 
-    // End to end through the real LivePhrase into a simulated field.
-    for box in [FieldBox.notes, .slack, .openCode] {
-        let field = SimulatedField(box: box, text: "")
-        LivePhrase.simulatedField = field
-        LivePhrase.displayed = ""
-        LivePhrase.commit("hi my name is Jack.")
-        for p in ["later", "later I", "later I will", "later I will go", "later I will go outside"] {
-            LivePhrase.show(p)
-        }
-        LivePhrase.commit(r("later I will go outside", "r I will go outside"))
-        // (Notes reads the empty document and capitalizes "Hi" too.)
-        expect(field.text.lowercased().hasPrefix("hi") && field.text.dropFirst() == "i my name is Jack. Later I will go outside", "\(box.title): new sentence keeps its first word (got \(String(reflecting: field.text)))")
-        LivePhrase.simulatedField = nil
-        LivePhrase.displayed = ""
-    }
-    let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
-    expect(session.contains("FinalReconcile.restoreClippedStart(live: phraseLive, final: rawFinal)"), "every final is checked against the live text")
-    expect(session.contains("process(final: text)"), "phrases queued during hold-to-talk are not reconciled twice")
+// The SpeechDetector (voice-activity detection) did nothing for the app:
+// its only output, the last speech time, never exceeded the last audio time
+// it was compared with. Removed (Oct 7).
+do {
+    let engine = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
+    expect(!engine.contains("SpeechDetector"), "no voice detector in the analyzer")
+    expect(engine.contains("let modules: [any SpeechModule] = [transcriber]"), "transcriber only")
 }
 
 print("CheckLogic passed")

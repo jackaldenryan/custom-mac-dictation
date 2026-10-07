@@ -612,6 +612,11 @@ private struct AppRootView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Diagnostics")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
+            Toggle("Save a diagnostic log", isOn: diagnosticLoggingBinding)
+            Text("Off by default. When on, what you dictate and what the app does are written to a log file on this Mac to help track down problems.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Last heard: \(session.lastFinal.isEmpty ? "—" : session.lastFinal)")
             Text("Last route: \(session.lastRoute.isEmpty ? "—" : session.lastRoute)")
             ScrollView {
@@ -858,6 +863,18 @@ private struct AppRootView: View {
             set: { name in
                 settings.sounds[event] = name
                 persist()
+            }
+        )
+    }
+
+    private var diagnosticLoggingBinding: Binding<Bool> {
+        Binding(
+            get: { settings.diagnosticLogging },
+            set: { on in
+                settings.diagnosticLogging = on
+                persist()
+                DiagnosticLog.line("Diagnostic log on (version \(AppVersion.current))")
+                logText = DiagnosticLog.tail()
             }
         )
     }

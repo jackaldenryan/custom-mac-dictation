@@ -100,6 +100,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var sounds: SoundSettings
     /// Hold a key to talk instead of always listening (settings.json).
     public var holdToTalk: HoldToTalkSettings
+    /// Save a diagnostic log file (off by default; settings.json).
+    public var diagnosticLogging: Bool
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
@@ -118,7 +120,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             commandSettleSeconds: defaultCommandSettleSeconds,
             disableFinalizeDelay: false,
             sounds: .default,
-            holdToTalk: .default
+            holdToTalk: .default,
+            diagnosticLogging: false
         )
     }
 
@@ -136,6 +139,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case disableFinalizeDelay
         case sounds
         case holdToTalk
+        case diagnosticLogging
     }
 
     public init(
@@ -150,7 +154,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         commandSettleSeconds: Double = AppSettings.defaultCommandSettleSeconds,
         disableFinalizeDelay: Bool = false,
         sounds: SoundSettings = .default,
-        holdToTalk: HoldToTalkSettings = .default
+        holdToTalk: HoldToTalkSettings = .default,
+        diagnosticLogging: Bool = false
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphonePriority = MicrophonePriority.normalized(microphonePriority)
@@ -164,6 +169,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.disableFinalizeDelay = disableFinalizeDelay
         self.sounds = sounds
         self.holdToTalk = holdToTalk
+        self.diagnosticLogging = diagnosticLogging
     }
 
     public init(from decoder: Decoder) throws {
@@ -195,6 +201,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
         sounds = try container.decodeIfPresent(SoundSettings.self, forKey: .sounds) ?? .default
         holdToTalk = try container.decodeIfPresent(HoldToTalkSettings.self, forKey: .holdToTalk) ?? .legacy
+        diagnosticLogging = try container.decodeIfPresent(Bool.self, forKey: .diagnosticLogging) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -211,6 +218,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
         try container.encode(sounds, forKey: .sounds)
         try container.encode(holdToTalk, forKey: .holdToTalk)
+        try container.encode(diagnosticLogging, forKey: .diagnosticLogging)
     }
 
     public static func clampedFinalizeDelay(_ seconds: Double) -> Double {
@@ -296,7 +304,9 @@ public final class SettingsStore: @unchecked Sendable {
             cached.preferredListeningState = prefs.preferredListeningState
             cached.sounds = prefs.sounds
             cached.holdToTalk = prefs.holdToTalk
+            cached.diagnosticLogging = prefs.diagnosticLogging
         }
+        DiagnosticLog.savesToFile = cached.diagnosticLogging
     }
 
     public var settings: AppSettings {
@@ -308,6 +318,7 @@ public final class SettingsStore: @unchecked Sendable {
         queue.sync {
             let previous = cached
             mutate(&cached)
+            DiagnosticLog.savesToFile = cached.diagnosticLogging
             if previous.commands != cached.commands {
                 ConfigFolder.writeCommands(cached.commands)
             }

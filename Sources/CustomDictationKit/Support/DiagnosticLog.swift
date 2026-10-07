@@ -12,9 +12,12 @@ public enum DiagnosticLog {
 
     /// Test harnesses turn this off so they never write the user's log.
     nonisolated(unsafe) public static var isEnabled = true
+    /// The "Save a diagnostic log" setting (off by default). Off: nothing is
+    /// logged anywhere, since lines include what you dictate.
+    nonisolated(unsafe) public static var savesToFile = false
 
     public static func line(_ message: String) {
-        guard isEnabled else { return }
+        guard isEnabled, savesToFile else { return }
         let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withInternetDateTime])
         let entry = "[\(stamp)] \(message)\n"
         queue.async {
@@ -33,7 +36,9 @@ public enum DiagnosticLog {
     }
 
     public static func tail(maxBytes: Int = 32_000) -> String {
-        guard let data = try? Data(contentsOf: fileURL) else { return "No log yet." }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return savesToFile ? "No log yet." : "Logging is off."
+        }
         if data.count <= maxBytes {
             return String(decoding: data, as: UTF8.self)
         }
@@ -43,7 +48,7 @@ public enum DiagnosticLog {
     public static func revealInFinder() {
         let url = fileURL
         if !FileManager.default.fileExists(atPath: url.path) {
-            line("Log file created.")
+            FileManager.default.createFile(atPath: url.path, contents: nil)
         }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }

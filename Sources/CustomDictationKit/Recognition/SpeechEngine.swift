@@ -12,15 +12,12 @@ public final class SpeechEngine: @unchecked Sendable {
 
     private var analyzer: SpeechAnalyzer?
     private var transcriber: DictationTranscriber?
-    private var detector: SpeechDetector?
     private var capture: AudioCapture?
     private var resultsTask: Task<Void, Never>?
-    private var detectorTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
     private var finalizeTask: Task<Void, Never>?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var lastInputEnd = CMTime.zero
-    private var lastSpeechEnd = CMTime.zero
     private var finalizeGate = FinalizeGate()
     private var bufferCount = 0
     private var outputFormat: AVAudioFormat?
@@ -35,9 +32,8 @@ public final class SpeechEngine: @unchecked Sendable {
     public func ensureAssets() async throws {
         let locale = await resolvedLocale()
         let transcriber = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
-        let detector = SpeechDetector(detectionOptions: .init(sensitivityLevel: .medium), reportResults: false)
         _ = try await AssetInventory.reserve(locale: locale)
-        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber, detector]) {
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             Task { @MainActor in
                 self.onAssetProgress?(request.progress.fractionCompleted)
             }
@@ -82,8 +78,7 @@ public final class SpeechEngine: @unchecked Sendable {
             reportingOptions: reporting,
             attributeOptions: preset.attributeOptions
         )
-        let detector = SpeechDetector(detectionOptions: .init(sensitivityLevel: .medium), reportResults: true)
-        let modules: [any SpeechModule] = [detector, transcriber]
+        let modules: [any SpeechModule] = [transcriber]
 
         if let request = try await AssetInventory.assetInstallationRequest(supporting: modules) {
             try await request.downloadAndInstall()
@@ -116,7 +111,6 @@ public final class SpeechEngine: @unchecked Sendable {
         inputContinuation = continuation
         outputFormat = format
         lastInputEnd = .zero
-        lastSpeechEnd = .zero
         bufferCount = 0
         if capture {
             try startCapture(microphoneUID: microphoneUID)
@@ -152,23 +146,6 @@ public final class SpeechEngine: @unchecked Sendable {
             }
         }
 
-        detectorTask = Task { [weak self] in
-            do {
-                for try await result in detector.results {
-                    guard let self else { return }
-                    if result.speechDetected {
-                        self.lastSpeechEnd = result.range.end
-                    } else if result.isFinal || result.range.end.isValid {
-                        self.lastSpeechEnd = result.range.end
-                    }
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                DiagnosticLog.line("Speech detector error: \(error.localizedDescription)")
-            }
-        }
-
         finalizeTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
@@ -192,7 +169,6 @@ public final class SpeechEngine: @unchecked Sendable {
 
         self.analyzer = analyzer
         self.transcriber = transcriber
-        self.detector = detector
     }
 
     public func stop() async {
@@ -251,8 +227,6 @@ public final class SpeechEngine: @unchecked Sendable {
         finalizeTask = nil
         resultsTask?.cancel()
         resultsTask = nil
-        detectorTask?.cancel()
-        detectorTask = nil
         inputContinuation?.finish()
         inputContinuation = nil
         if let analyzer {
@@ -262,7 +236,6 @@ public final class SpeechEngine: @unchecked Sendable {
         analysisTask = nil
         analyzer = nil
         transcriber = nil
-        detector = nil
         outputFormat = nil
         lastMicrophoneUID = nil
         lastVocabSignature = ""
@@ -282,10 +255,7 @@ public final class SpeechEngine: @unchecked Sendable {
     private func finalizeThroughLatest() async {
         finalizeGate.noteFinal()
         guard let analyzer else { return }
-        var through = lastInputEnd
-        if lastSpeechEnd.isValid, lastSpeechEnd.isNumeric {
-            through = CMTimeMaximum(through, lastSpeechEnd)
-        }
+        let through = lastInputEnd
         guard through.isValid, through.isNumeric, through.seconds > 0 else { return }
         do {
             DiagnosticLog.line("Finalize through \(through.seconds)")
