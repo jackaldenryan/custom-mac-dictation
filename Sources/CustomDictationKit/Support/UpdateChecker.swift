@@ -122,3 +122,17 @@ private struct GitHubRelease: Decodable {
         }
     }
 }
+
+/// When the background check may show the update pop-up.
+public enum UpdatePromptPolicy {
+    /// How often the app looks for a new release.
+    public static let checkInterval: TimeInterval = 5 * 60
+    /// "Not now" quiets the pop-up for this long (per version).
+    public static let snooze: TimeInterval = 24 * 60 * 60
+
+    public static func shouldShow(version: String, dismissed: [String: Date], now: Date, alreadyShowing: Bool) -> Bool {
+        if alreadyShowing { return false }
+        guard let at = dismissed[version] else { return true }
+        return now.timeIntervalSince(at) >= snooze
+    }
+}

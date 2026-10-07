@@ -126,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await session.restorePreferredState()
             if !AppRuntime.isLocalTest {
-                await updater.check(interactive: false)
+                updater.startPeriodicChecks()
             }
         }
     }

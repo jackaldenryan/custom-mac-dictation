@@ -963,4 +963,24 @@ do {
     expect(engineSource.contains("capture: Bool = true"), "engine can warm up without opening the mic")
 }
 
+// Update pop-up (Oct 7): the app checks every five minutes; a new version
+// shows a bottom-right pop-up with Update / Not now. "Not now" quiets that
+// version for a day; a newer version asks again right away.
+do {
+    let now = Date()
+    expect(UpdatePromptPolicy.checkInterval == 300, "checks every five minutes")
+    expect(UpdatePromptPolicy.shouldShow(version: "0.1.43", dismissed: [:], now: now, alreadyShowing: false), "new version: pop-up")
+    expect(!UpdatePromptPolicy.shouldShow(version: "0.1.43", dismissed: [:], now: now, alreadyShowing: true), "never two pop-ups at once")
+    let notNow = ["0.1.43": now]
+    expect(!UpdatePromptPolicy.shouldShow(version: "0.1.43", dismissed: notNow, now: now.addingTimeInterval(300), alreadyShowing: false), "not now: the next check stays quiet")
+    expect(!UpdatePromptPolicy.shouldShow(version: "0.1.43", dismissed: notNow, now: now.addingTimeInterval(23 * 3600), alreadyShowing: false), "quiet for the day")
+    expect(UpdatePromptPolicy.shouldShow(version: "0.1.43", dismissed: notNow, now: now.addingTimeInterval(24 * 3600), alreadyShowing: false), "asks again the next day")
+    expect(UpdatePromptPolicy.shouldShow(version: "0.1.44", dismissed: notNow, now: now.addingTimeInterval(600), alreadyShowing: false), "a newer version asks right away")
+    let app = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/CustomDictationApp.swift"), encoding: .utf8)
+    expect(app.contains("updater.startPeriodicChecks()"), "periodic checks start at launch")
+    let promptSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/UpdatePromptController.swift"), encoding: .utf8)
+    expect(promptSource.contains(".nonactivatingPanel"), "the pop-up never steals focus from dictation")
+    expect(promptSource.contains("visible.maxX - panel.frame.width") && promptSource.contains("visible.minY + margin"), "bottom-right corner")
+}
+
 print("CheckLogic passed")
