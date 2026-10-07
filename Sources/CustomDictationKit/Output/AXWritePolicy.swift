@@ -46,6 +46,13 @@ public enum AXWritePolicy {
         "com.todesktop.230313mzl4w4u92",
     ]
 
+    /// Installed web apps (Chrome "Install page as app", e.g. Gmail is
+    /// com.google.Chrome.app.fmgjjmmmlfnkbppncabfkddbjimcfncm) are their
+    /// browser in a separate window: same web engine, own bundle id.
+    public static func isBrowserAppShim(_ bundleID: String) -> Bool {
+        webEngineBundleIDs.contains { bundleID.hasPrefix($0 + ".app.") }
+    }
+
     public static func allowsAXWrite(
         bundleID: String,
         isWebEngineApp: Bool,
@@ -53,7 +60,7 @@ public enum AXWritePolicy {
         untrustedBundleIDs: Set<String>
     ) -> Bool {
         if isWebEngineApp || focusInWebArea { return false }
-        if webEngineBundleIDs.contains(bundleID) { return false }
+        if webEngineBundleIDs.contains(bundleID) || isBrowserAppShim(bundleID) { return false }
         if untrustedBundleIDs.contains(bundleID) { return false }
         return true
     }
@@ -93,7 +100,7 @@ public enum KeystrokePolicy {
     /// Apps whose UI is a full browser engine. Not CEF or other embedded web
     /// views ("Chromium Embedded Framework", Zoom's "ZoomCefHelper").
     public static func swallowsUnhandledKeys(frameworkNames: [String], bundleID: String) -> Bool {
-        if AXWritePolicy.webEngineBundleIDs.contains(bundleID) { return true }
+        if AXWritePolicy.webEngineBundleIDs.contains(bundleID) || AXWritePolicy.isBrowserAppShim(bundleID) { return true }
         return frameworkNames.contains { name in
             let n = name.lowercased()
             return n.hasPrefix("electron framework")

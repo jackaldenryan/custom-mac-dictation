@@ -652,6 +652,16 @@ do {
     expect(!swallows(["Spacefinder.framework", "ChromeCastKit.framework"]), "loose name matches are not browsers")
     expect(!swallows([], "us.zoom.xos"), "no frameworks: native")
     expect(!swallows([], "com.apple.finder"), "Finder: native")
+    // Gmail installed as a Chrome app (Oct 7, 0.1.43): its own bundle id and
+    // no frameworks, so it was treated as native and dictation was skipped
+    // ("focus in Gmail is AXWebArea").
+    let gmail = "com.google.Chrome.app.fmgjjmmmlfnkbppncabfkddbjimcfncm"
+    expect(swallows([], gmail), "Chrome web apps (Gmail) are Chrome")
+    expect(ok(swallows([], gmail), "AXWebArea"), "Gmail web app takes dictation")
+    expect(swallows([], "com.microsoft.edgemac.app.abcdef"), "Edge web apps")
+    expect(swallows([], "com.brave.Browser.app.abcdef"), "Brave web apps")
+    expect(!swallows([], "com.google.Chromecast"), "only real web-app shims")
+    expect(!AXWritePolicy.allowsAXWrite(bundleID: gmail, isWebEngineApp: false, focusInWebArea: false, untrustedBundleIDs: []), "no AX writes into Chrome web apps")
 
     // The Oct 7 Zoom home window, whatever AX reports for its focus.
     let zoomSwallows = swallows(zoom, "us.zoom.xos")
@@ -981,6 +991,67 @@ do {
     let promptSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/UpdatePromptController.swift"), encoding: .utf8)
     expect(promptSource.contains(".nonactivatingPanel"), "the pop-up never steals focus from dictation")
     expect(promptSource.contains("visible.maxX - panel.frame.width") && promptSource.contains("visible.minY + margin"), "bottom-right corner")
+}
+
+// Apple's final sometimes cuts off the start of a phrase its live text
+// showed (Oct 7: "hi my name is Jack.r I will go outside" instead of
+// "... Jack. Later I will go outside"; logs Aug-Oct: ~1-2% of phrases,
+// e.g. "but not the rainbow pride flag" -> "the rainbow pride flag").
+// The live opening is kept when the final only cut the start.
+do {
+    let r = FinalReconcile.restoreDroppedStart
+    // Real pairs from the logs (live, final).
+    expect(r("Later I will go outside", "r I will go outside") == "Later I will go outside", "clipped first word restored (Jack's report)")
+    expect(r("later I will go outside", "I will go outside") == "later I will go outside", "dropped first word restored")
+    expect(r("but not the rainbow pride flag", "the rainbow pride flag") == "but not the rainbow pride flag", "two dropped words restored")
+    expect(r("doesn't mean", "mean") == "doesn't mean", "doesn't mean")
+    expect(r("one of the biggest", "the biggest") == "one of the biggest", "one of the biggest")
+    expect(r("a few other", "few other") == "a few other", "a few other")
+    expect(r("and also in case I get", "in case I get") == "and also in case I get", "and also")
+    expect(r("I don't know if it's the same guy", "don't know if it's the same guy") == "I don't know if it's the same guy", "dropped I")
+    expect(r("are you still down", "you still down") == "are you still down", "dropped are")
+    // The final's own wording is kept for the part it did hear.
+    expect(r("later I will go outside", "I will go outside.") == "later I will go outside.", "final's punctuation kept")
+    expect(r("Later I will", "r I Will") == "Later I Will", "final's casing kept for words it heard")
+    // Apple's real cleanups stay.
+    expect(r("fast faster", "faster") == "faster", "stutter cleanup kept")
+    expect(r("that that's good if it's not that", "that's good if it's not that") == "that's good if it's not that", "repeated word cleanup kept")
+    expect(r("de delicate or something", "delicate or something") == "delicate or something", "false start kept out")
+    expect(r("focus focusing on the most important", "focusing on the most important") == "focusing on the most important", "focus focusing")
+    expect(r("extra extraction issues", "extraction issues") == "extraction issues", "extra extraction")
+    expect(r("a apple a day", "apple a day") == "a apple a day", "a one-letter word is not a stutter")
+    expect(r("I I think so", "I think so") == "I think so", "repeated one-letter word is a stutter")
+    // Finals that change words (not just cut the start) win.
+    expect(r("those guys been seen with", "two guys been seen with") == "two guys been seen with", "corrected word kept")
+    expect(r("free to", "tore") == "tore", "different words: final wins")
+    expect(r("I just noticed that", "I noticed that") == "I noticed that", "word removed mid-phrase: final wins")
+    expect(r("they get", "what they get") == "what they get", "final added words: final wins")
+    expect(r("hello there", "hello there") == "hello there", "same text unchanged")
+    expect(r("", "hello") == "hello", "no live text: final as is")
+    expect(r("hello", "") == "", "empty final stays empty")
+    expect(r("it's", "s") == "s" || r("it's", "s") == "it's", "single token handled")
+    expect(r("Later", "r") == "Later", "single clipped word restored")
+    expect(r("hello world", "rld") == "hello world", "clipped last word with dropped words before")
+    expect(r("go outside", "outside today") == "outside today", "final with new words at the end: final wins")
+
+    // End to end through the real LivePhrase into a simulated field.
+    for box in [FieldBox.notes, .slack, .openCode] {
+        let field = SimulatedField(box: box, text: "")
+        LivePhrase.simulatedField = field
+        LivePhrase.displayed = ""
+        LivePhrase.commit("hi my name is Jack.")
+        for p in ["later", "later I", "later I will", "later I will go", "later I will go outside"] {
+            LivePhrase.show(p)
+        }
+        LivePhrase.commit(r("later I will go outside", "r I will go outside"))
+        // (Notes reads the empty document and capitalizes "Hi" too.)
+        expect(field.text.lowercased().hasPrefix("hi") && field.text.dropFirst() == "i my name is Jack. Later I will go outside", "\(box.title): new sentence keeps its first word (got \(String(reflecting: field.text)))")
+        LivePhrase.simulatedField = nil
+        LivePhrase.displayed = ""
+    }
+    let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(session.contains("FinalReconcile.restoreDroppedStart(live: phraseLive, final: rawFinal)"), "every final is checked against the live text")
+    expect(session.contains("process(final: text)"), "phrases queued during hold-to-talk are not reconciled twice")
 }
 
 print("CheckLogic passed")

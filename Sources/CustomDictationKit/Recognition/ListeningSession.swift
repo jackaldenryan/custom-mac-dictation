@@ -31,6 +31,9 @@ public final class ListeningSession: ObservableObject {
     private var earlyCommandTask: Task<Void, Never>?
     private var earlyCommandText = ""
     private var ranEarly: EarlyCommand.Ran?
+    /// Latest live text of the phrase being heard, kept until its final
+    /// arrives (lastPartial can be cleared earlier by a finalize).
+    private var phraseLive = ""
 
     /// Hold-to-talk: .held while the key is down (nothing is typed yet),
     /// .releasing while the last words are finished and typed, .discarding
@@ -203,7 +206,7 @@ public final class ListeningSession: ObservableObject {
         } else {
             let queued = holdQueue
             holdQueue = []
-            for text in queued { handle(transcript: text) }
+            for text in queued { process(final: text) }
             holdFinalArrived = false
             let spoke = !lastPartial.isEmpty
             await engine.finalizeNow()
@@ -322,6 +325,7 @@ public final class ListeningSession: ObservableObject {
     private func handlePartial(_ text: String) {
         let repeated = text == lastPartial
         lastPartial = text
+        phraseLive = text
         // Apple can resend the same live text; that must not restart the wait.
         if !(repeated && text == earlyCommandText) {
             earlyCommandTask?.cancel()
@@ -361,7 +365,17 @@ public final class ListeningSession: ObservableObject {
         lastPartial = ""
     }
 
-    private func handle(transcript: String) {
+    private func handle(transcript rawFinal: String) {
+        // Apple's final can cut off the start the live text showed.
+        let transcript = FinalReconcile.restoreDroppedStart(live: phraseLive, final: rawFinal)
+        phraseLive = ""
+        if transcript != rawFinal {
+            DiagnosticLog.line("Final lost its start; kept the live words: \(String(reflecting: rawFinal)) -> \(String(reflecting: transcript))")
+        }
+        process(final: transcript)
+    }
+
+    private func process(final transcript: String) {
         switch holdPhase {
         case .held:
             holdQueue.append(transcript)
