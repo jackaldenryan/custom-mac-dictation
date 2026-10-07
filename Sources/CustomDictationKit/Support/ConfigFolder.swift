@@ -257,14 +257,16 @@ public enum ConfigFolder {
     {
       "finalizeDelaySeconds": 0.4,
       "keyRepeatDelaySeconds": 0.08,
-      "commandSettleSeconds": 0.2,
+      "commandSettleSeconds": 0.4,
       "disableFinalizeDelay": false
     }
     ```
 
     ## settings.json
 
-    Microphone, login, and onboarding.
+    Microphones (up to three, in order), login, onboarding, and sounds.
+
+    `sounds.sounds` maps `startListening`, `stopListening`, `commandRan`, `commandFailed` to a macOS sound name (`Pop`, `Tink`, `Morse`, … or `""` for none). `sounds.speakFailures` says failures out loud ("I could not find Zoom").
 
     ## commands/
 
@@ -360,12 +362,14 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var microphonePriority: [MicrophoneDevice]
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
+    public var sounds: SoundSettings
 
     public init(_ settings: AppSettings) {
         hasCompletedOnboarding = settings.hasCompletedOnboarding
         microphonePriority = settings.microphonePriority
         launchAtLogin = settings.launchAtLogin
         preferredListeningState = settings.preferredListeningState
+        sounds = settings.sounds
     }
 
     enum CodingKeys: String, CodingKey {
@@ -374,6 +378,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         case microphoneUID // older single-mic setting, read only
         case launchAtLogin
         case preferredListeningState
+        case sounds
     }
 
     public init(from decoder: Decoder) throws {
@@ -385,6 +390,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         )
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
+        sounds = try c.decodeIfPresent(SoundSettings.self, forKey: .sounds) ?? .default
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -393,5 +399,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         try c.encode(microphonePriority, forKey: .microphonePriority)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(preferredListeningState, forKey: .preferredListeningState)
+        try c.encode(sounds, forKey: .sounds)
     }
 }

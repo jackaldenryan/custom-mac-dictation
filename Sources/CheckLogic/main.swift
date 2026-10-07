@@ -599,11 +599,11 @@ do {
     if AppNameResolver.resolve("finder") != nil {
         expect(Router.isEarlyCommand(transcript: "open finder", state: .listening, settings: s), "open an installed app runs early")
     }
-    expect(AppSettings.default.commandSettleSeconds == 0.2, "commands run 0.2 s after the words settle by default")
+    expect(AppSettings.default.commandSettleSeconds == 0.4, "commands run 0.4 s after the words settle by default (Oct 7)")
     expect(AppSettings.clampedCommandSettle(9) == 3 && AppSettings.clampedCommandSettle(-1) == 0, "command pause clamped to 0-3 s")
-    expect(DelaySettings(AppSettings.default).commandSettleSeconds == 0.2, "command pause saved in delays.json")
+    expect(DelaySettings(AppSettings.default).commandSettleSeconds == 0.4, "command pause saved in delays.json")
     let oldDelays = #"{"finalizeDelaySeconds":0.4,"keyRepeatDelaySeconds":0.08}"#.data(using: .utf8)!
-    expect((try? JSONDecoder().decode(DelaySettings.self, from: oldDelays))?.commandSettleSeconds == 0.2, "older delays.json gets the 0.2 s default")
+    expect((try? JSONDecoder().decode(DelaySettings.self, from: oldDelays))?.commandSettleSeconds == 0.4, "older delays.json gets the 0.4 s default")
     let sessionSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
     expect(sessionSource.contains("store.settings.commandSettleSeconds"), "session uses the command pause setting")
     let now = Date()
@@ -841,6 +841,43 @@ do {
     let menuSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/StatusItemController.swift"), encoding: .utf8)
     expect(menuSource.contains("MicrophonePriority.resolve(store.settings.microphonePriority"), "menu checks the mic in use, not slot 1")
     expect(!menuSource.contains("microphonePriority.first?.uid"), "menu does not check an unplugged first choice")
+}
+
+// Sounds are settings (Oct 7): a sound per event (start, stop, command
+// ran, command failed), each can be None, and spoken failures ("I could
+// not find Zoom") can be turned off.
+do {
+    let d = SoundSettings.default
+    expect(d[.startListening] == "Pop" && d[.stopListening] == "Tink" && d[.commandRan] == "Morse", "defaults keep the old sounds")
+    expect(d[.commandFailed] == "", "no failure sound by default (it is spoken)")
+    expect(d.speakFailures, "failures spoken by default, as before")
+    var s = d
+    s[.startListening] = "Glass"
+    s[.commandRan] = ""
+    s.speakFailures = false
+    expect(s[.startListening] == "Glass" && s[.stopListening] == "Tink", "each event set on its own")
+    expect(s[.commandRan] == "", "a sound can be None")
+    var app = AppSettings.default
+    app.sounds = s
+    let round = (try? JSONEncoder().encode(PrefsSettings(app))).flatMap { try? JSONDecoder().decode(PrefsSettings.self, from: $0) }
+    expect(round?.sounds == s, "sounds saved in settings.json")
+    let appRound = (try? JSONEncoder().encode(app)).flatMap { try? JSONDecoder().decode(AppSettings.self, from: $0) }
+    expect(appRound?.sounds == s, "sounds saved with app settings")
+    let old = Data(#"{"hasCompletedOnboarding":true}"#.utf8)
+    expect((try? JSONDecoder().decode(PrefsSettings.self, from: old))?.sounds == .default, "older settings.json gets the default sounds")
+    let partial = Data(#"{"sounds":{"startListening":"Hero"}}"#.utf8)
+    let p = try? JSONDecoder().decode(SoundSettings.self, from: partial)
+    expect(p?[.startListening] == "Hero" && p?[.stopListening] == "Tink" && p?.speakFailures == true, "missing entries fall back to defaults")
+    expect(SoundEvent.allCases.count == 4, "four sound events")
+    let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(session.contains("if sounds.speakFailures") && session.contains("SpokenFeedback.shared.say(message)"), "spoken failures follow the toggle")
+    expect(session.contains("SoundFeedback.play(.commandFailed"), "failure sound plays")
+    for event in [".startListening", ".stopListening", ".commandRan"] {
+        expect(session.contains("SoundFeedback.play(\(event), settings: store.settings.sounds)"), "\(event) uses its setting")
+    }
+    let window = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/App/MainWindowController.swift"), encoding: .utf8)
+    expect(window.contains("Button(\"Test\")"), "each sound has a Test button")
+    expect(!window.contains("SoundFeedback.play(named: name)"), "choosing a sound does not play it")
 }
 
 print("CheckLogic passed")

@@ -92,6 +92,7 @@ private struct AppRootView: View {
     @State private var customCommandSettleText = ""
     @State private var commandSettleUsesCustom = false
     @State private var section: AppSection = .listen
+    @State private var soundNames: [String] = SoundFeedback.availableSounds()
     @State private var vocabSearch = ""
     @State private var commandSearch = ""
     @State private var selectedVocab = Set<String>()
@@ -241,6 +242,28 @@ private struct AppRootView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Section {
+                    ForEach(SoundEvent.allCases) { event in
+                        HStack {
+                            Picker(event.title, selection: soundBinding(event)) {
+                                Text("None").tag("")
+                                ForEach(soundNames, id: \.self) { name in
+                                    Text(name).tag(name)
+                                }
+                            }
+                            Button("Test") { SoundFeedback.play(named: settings.sounds[event]) }
+                                .buttonStyle(.bordered)
+                                .disabled(settings.sounds[event].isEmpty)
+                        }
+                    }
+                    Toggle("Say failures out loud", isOn: speakFailuresBinding)
+                } header: {
+                    Text("Sounds")
+                } footer: {
+                    Text("“Say failures out loud” speaks messages like “I could not find Zoom” when a command can’t open or quit something.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Startup") {
                     Toggle("Open at login", isOn: launchBinding)
                 }
@@ -288,7 +311,7 @@ private struct AppRootView: View {
                                 .buttonStyle(.bordered)
                         }
                     }
-                    Text("Commands like “open Slack” run once the words have stayed the same this long, instead of waiting for Apple to finish the phrase. Longer is safer for multi-part commands like “press the down key five times”. Default is 0.2 seconds.")
+                    Text("Commands like “open Slack” run once the words have stayed the same this long, instead of waiting for Apple to finish the phrase. Longer is safer for multi-part commands like “press the down key five times”. Default is 0.4 seconds.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -724,6 +747,26 @@ private struct AppRootView: View {
                     keyRepeatUsesCustom = true
                     customKeyRepeatText = Self.keyRepeatFieldText(settings.keyRepeatDelaySeconds)
                 }
+            }
+        )
+    }
+
+    private func soundBinding(_ event: SoundEvent) -> Binding<String> {
+        Binding(
+            get: { settings.sounds[event] },
+            set: { name in
+                settings.sounds[event] = name
+                persist()
+            }
+        )
+    }
+
+    private var speakFailuresBinding: Binding<Bool> {
+        Binding(
+            get: { settings.sounds.speakFailures },
+            set: { on in
+                settings.sounds.speakFailures = on
+                persist()
             }
         )
     }

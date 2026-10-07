@@ -96,10 +96,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// the command runs (instead of waiting for Apple's final).
     public var commandSettleSeconds: Double
     public var disableFinalizeDelay: Bool
+    /// Sound per event and spoken failures (settings.json).
+    public var sounds: SoundSettings
 
     public static let defaultFinalizeDelaySeconds = 0.4
     public static let defaultKeyRepeatDelaySeconds = 0.08
-    public static let defaultCommandSettleSeconds = 0.2
+    public static let defaultCommandSettleSeconds = 0.4
 
     public static var `default`: AppSettings {
         AppSettings(
@@ -112,7 +114,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
             finalizeDelaySeconds: defaultFinalizeDelaySeconds,
             keyRepeatDelaySeconds: defaultKeyRepeatDelaySeconds,
             commandSettleSeconds: defaultCommandSettleSeconds,
-            disableFinalizeDelay: false
+            disableFinalizeDelay: false,
+            sounds: .default
         )
     }
 
@@ -128,6 +131,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case keyRepeatDelaySeconds
         case commandSettleSeconds
         case disableFinalizeDelay
+        case sounds
     }
 
     public init(
@@ -140,7 +144,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         finalizeDelaySeconds: Double,
         keyRepeatDelaySeconds: Double,
         commandSettleSeconds: Double = AppSettings.defaultCommandSettleSeconds,
-        disableFinalizeDelay: Bool = false
+        disableFinalizeDelay: Bool = false,
+        sounds: SoundSettings = .default
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.microphonePriority = MicrophonePriority.normalized(microphonePriority)
@@ -152,6 +157,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.keyRepeatDelaySeconds = Self.clampedKeyRepeatDelay(keyRepeatDelaySeconds)
         self.commandSettleSeconds = Self.clampedCommandSettle(commandSettleSeconds)
         self.disableFinalizeDelay = disableFinalizeDelay
+        self.sounds = sounds
     }
 
     public init(from decoder: Decoder) throws {
@@ -181,6 +187,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             try container.decodeIfPresent(Double.self, forKey: .commandSettleSeconds) ?? Self.defaultCommandSettleSeconds
         )
         disableFinalizeDelay = try container.decodeIfPresent(Bool.self, forKey: .disableFinalizeDelay) ?? false
+        sounds = try container.decodeIfPresent(SoundSettings.self, forKey: .sounds) ?? .default
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -195,6 +202,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(keyRepeatDelaySeconds, forKey: .keyRepeatDelaySeconds)
         try container.encode(commandSettleSeconds, forKey: .commandSettleSeconds)
         try container.encode(disableFinalizeDelay, forKey: .disableFinalizeDelay)
+        try container.encode(sounds, forKey: .sounds)
     }
 
     public static func clampedFinalizeDelay(_ seconds: Double) -> Double {
@@ -278,6 +286,7 @@ public final class SettingsStore: @unchecked Sendable {
             cached.microphonePriority = prefs.microphonePriority
             cached.launchAtLogin = prefs.launchAtLogin
             cached.preferredListeningState = prefs.preferredListeningState
+            cached.sounds = prefs.sounds
         }
     }
 

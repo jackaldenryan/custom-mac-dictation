@@ -275,7 +275,11 @@ public final class ListeningSession: ObservableObject {
         case .failed(let message):
             lastRoute = "failed"
             lastError = message
-            SpokenFeedback.shared.say(message)
+            let sounds = settings.sounds
+            SoundFeedback.play(.commandFailed, settings: sounds)
+            if sounds.speakFailures {
+                SpokenFeedback.shared.say(message)
+            }
             onErrorMessage?(message)
         }
         DiagnosticLog.line("Route \(lastRoute) state=\(state.rawValue) text=\(transcript)")
@@ -285,11 +289,11 @@ public final class ListeningSession: ObservableObject {
         let normalized = TranscriptNormalizer.normalize(transcript)
         let commands = store.settings.commands.filter(\.enabled)
         if commands.contains(where: { $0.action == .startListening && $0.phrases.contains { TranscriptNormalizer.normalize($0) == normalized } }) {
-            SoundFeedback.playStart()
+            SoundFeedback.play(.startListening, settings: store.settings.sounds)
         } else if commands.contains(where: { $0.action == .stopListening && $0.phrases.contains { TranscriptNormalizer.normalize($0) == normalized } }) {
-            SoundFeedback.playStop()
+            SoundFeedback.play(.stopListening, settings: store.settings.sounds)
         } else {
-            SoundFeedback.playCommand()
+            SoundFeedback.play(.commandRan, settings: store.settings.sounds)
         }
     }
 
