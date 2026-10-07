@@ -366,11 +366,11 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handle(transcript rawFinal: String) {
-        // Apple's final can cut off the start the live text showed.
-        let transcript = FinalReconcile.restoreDroppedStart(live: phraseLive, final: rawFinal)
+        // Apple's final can clip the first word to a stray letter.
+        let transcript = FinalReconcile.restoreClippedStart(live: phraseLive, final: rawFinal)
         phraseLive = ""
         if transcript != rawFinal {
-            DiagnosticLog.line("Final lost its start; kept the live words: \(String(reflecting: rawFinal)) -> \(String(reflecting: transcript))")
+            DiagnosticLog.line("Final clipped the first word; kept the live words: \(String(reflecting: rawFinal)) -> \(String(reflecting: transcript))")
         }
         process(final: transcript)
     }

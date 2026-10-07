@@ -993,46 +993,41 @@ do {
     expect(promptSource.contains("visible.maxX - panel.frame.width") && promptSource.contains("visible.minY + margin"), "bottom-right corner")
 }
 
-// Apple's final sometimes cuts off the start of a phrase its live text
-// showed (Oct 7: "hi my name is Jack.r I will go outside" instead of
-// "... Jack. Later I will go outside"; logs Aug-Oct: ~1-2% of phrases,
-// e.g. "but not the rainbow pride flag" -> "the rainbow pride flag").
-// The live opening is kept when the final only cut the start.
+// Apple's final is trusted, including when it drops words: its finals are
+// real words and usually better than the live text. One exception: the
+// final clips the first word to a stray letter (Oct 7: "hi my name is
+// Jack.r I will go outside" instead of "... Jack. Later I will go
+// outside"). Then the live first word is kept.
 do {
-    let r = FinalReconcile.restoreDroppedStart
-    // Real pairs from the logs (live, final).
-    expect(r("Later I will go outside", "r I will go outside") == "Later I will go outside", "clipped first word restored (Jack's report)")
-    expect(r("later I will go outside", "I will go outside") == "later I will go outside", "dropped first word restored")
-    expect(r("but not the rainbow pride flag", "the rainbow pride flag") == "but not the rainbow pride flag", "two dropped words restored")
-    expect(r("doesn't mean", "mean") == "doesn't mean", "doesn't mean")
-    expect(r("one of the biggest", "the biggest") == "one of the biggest", "one of the biggest")
-    expect(r("a few other", "few other") == "a few other", "a few other")
-    expect(r("and also in case I get", "in case I get") == "and also in case I get", "and also")
-    expect(r("I don't know if it's the same guy", "don't know if it's the same guy") == "I don't know if it's the same guy", "dropped I")
-    expect(r("are you still down", "you still down") == "are you still down", "dropped are")
-    // The final's own wording is kept for the part it did hear.
-    expect(r("later I will go outside", "I will go outside.") == "later I will go outside.", "final's punctuation kept")
-    expect(r("Later I will", "r I Will") == "Later I Will", "final's casing kept for words it heard")
-    // Apple's real cleanups stay.
-    expect(r("fast faster", "faster") == "faster", "stutter cleanup kept")
-    expect(r("that that's good if it's not that", "that's good if it's not that") == "that's good if it's not that", "repeated word cleanup kept")
-    expect(r("de delicate or something", "delicate or something") == "delicate or something", "false start kept out")
-    expect(r("focus focusing on the most important", "focusing on the most important") == "focusing on the most important", "focus focusing")
-    expect(r("extra extraction issues", "extraction issues") == "extraction issues", "extra extraction")
-    expect(r("a apple a day", "apple a day") == "a apple a day", "a one-letter word is not a stutter")
-    expect(r("I I think so", "I think so") == "I think so", "repeated one-letter word is a stutter")
-    // Finals that change words (not just cut the start) win.
-    expect(r("those guys been seen with", "two guys been seen with") == "two guys been seen with", "corrected word kept")
-    expect(r("free to", "tore") == "tore", "different words: final wins")
-    expect(r("I just noticed that", "I noticed that") == "I noticed that", "word removed mid-phrase: final wins")
-    expect(r("they get", "what they get") == "what they get", "final added words: final wins")
-    expect(r("hello there", "hello there") == "hello there", "same text unchanged")
-    expect(r("", "hello") == "hello", "no live text: final as is")
-    expect(r("hello", "") == "", "empty final stays empty")
-    expect(r("it's", "s") == "s" || r("it's", "s") == "it's", "single token handled")
+    let r = FinalReconcile.restoreClippedStart
+    // Stray letters from the logs (live, final).
+    expect(r("Later I will go outside", "r I will go outside") == "Later I will go outside", "Jack's report: r -> Later")
+    expect(r("Thanks, are they primarily interested", "X, are they primarily interested") == "Thanks, are they primarily interested", "X -> Thanks")
+    expect(r("they have merged this PR", "K have merged this PR") == "they have merged this PR", "K -> they")
+    expect(r("key account review reviews, sales pipeline", "P account review reviews, sales pipeline") == "key account review reviews, sales pipeline", "P -> key")
+    expect(r("our", "P") == "our", "single word clipped to a letter")
     expect(r("Later", "r") == "Later", "single clipped word restored")
-    expect(r("hello world", "rld") == "hello world", "clipped last word with dropped words before")
-    expect(r("go outside", "outside today") == "outside today", "final with new words at the end: final wins")
+    expect(r("and then later I will", "r I will") == "and then later I will", "live opening kept up to the clipped word")
+    // The final's own wording is kept for the part it did hear.
+    expect(r("later I will go outside", "r I will go outside.") == "later I will go outside.", "final's punctuation kept")
+    expect(r("Later I will", "r I Will") == "Later I Will", "final's casing kept")
+    // Dropped or changed whole words: trust the final.
+    expect(r("but not the rainbow pride flag", "the rainbow pride flag") == "the rainbow pride flag", "dropped words: final wins")
+    expect(r("doesn't mean", "mean") == "mean", "dropped word: final wins")
+    expect(r("fast faster", "faster") == "faster", "stutter cleanup: final wins")
+    expect(r("immigration guide", "migration guide") == "migration guide", "real-word correction: final wins")
+    expect(r("supporting the knowledge", "porting the knowledge") == "porting the knowledge", "any real word: final wins")
+    expect(r("those guys been seen with", "two guys been seen with") == "two guys been seen with", "corrected word: final wins")
+    expect(r("free to", "tore") == "tore", "different words: final wins")
+    // Real one-letter words and spelled letters stay.
+    expect(r("the plan", "a plan") == "a plan", "\"a\" is a word")
+    expect(r("they think", "I think") == "I think", "\"I\" is a word")
+    expect(r("Z scaler", "Z scaler") == "Z scaler", "spelled letter in both")
+    expect(r("Q metrics, workflow status", "Q metrics, workflow status, etc.") == "Q metrics, workflow status, etc.", "final longer: final wins")
+    expect(r("key account review", "P account reviews") == "P account reviews", "rest differs: final wins")
+    expect(r("hello there", "hello there") == "hello there", "same text unchanged")
+    expect(r("", "r") == "r", "no live text: final as is")
+    expect(r("hello", "") == "", "empty final stays empty")
 
     // End to end through the real LivePhrase into a simulated field.
     for box in [FieldBox.notes, .slack, .openCode] {
@@ -1050,7 +1045,7 @@ do {
         LivePhrase.displayed = ""
     }
     let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
-    expect(session.contains("FinalReconcile.restoreDroppedStart(live: phraseLive, final: rawFinal)"), "every final is checked against the live text")
+    expect(session.contains("FinalReconcile.restoreClippedStart(live: phraseLive, final: rawFinal)"), "every final is checked against the live text")
     expect(session.contains("process(final: text)"), "phrases queued during hold-to-talk are not reconciled twice")
 }
 
