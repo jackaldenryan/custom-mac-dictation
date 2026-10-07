@@ -4,7 +4,9 @@ import CoreGraphics
 import Foundation
 
 public enum Typist {
-    public static func typeText(_ text: String, preferAX: Bool = true) {
+    /// - checkFocus: skip keystrokes when the focus takes no text (they would
+    ///   beep, see KeystrokePolicy). LivePhrase checks once per phrase itself.
+    public static func typeText(_ text: String, preferAX: Bool = true, checkFocus: Bool = true) {
         guard !text.isEmpty else { return }
         if !AXIsProcessTrusted() {
             DiagnosticLog.line("Type skipped; Accessibility not granted")
@@ -17,6 +19,13 @@ public enum Typist {
         if preferAX, FieldEditor.insert(text) {
             DiagnosticLog.line("AX inserted \(text.utf16.count) utf16 into \(frontAppName())")
             return
+        }
+        if checkFocus {
+            let target = FieldEditor.focusedTakesKeystrokes()
+            guard target.allowed else {
+                DiagnosticLog.line("Type skipped; focus in \(target.app) is \(target.role), not a text field (keystrokes would beep)")
+                return
+            }
         }
         let units = Array(text.utf16)
         let chunkSize = 20

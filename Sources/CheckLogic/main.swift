@@ -620,25 +620,86 @@ do {
 
 // Dictating with a Zoom meeting window in front made a "boop" for every
 // word (Oct 3): HID keystrokes went to a native view that takes no text,
-// and AppKit beeps for each unhandled key. Native apps now get keystrokes
-// only when AX focus can take text; web engines (which never beep) and
-// unknown focus keep typing as before.
+// and AppKit beeps for each unhandled key. The Zoom home window still
+// beeped (Oct 7): Zoom ships "ZoomCefHelper" apps, the web-engine test
+// matched "cef", and web engines were exempt. Only full browser engines
+// (browsers, Electron) are exempt now; everything else needs a focus that
+// takes text.
 do {
-    func ok(_ web: Bool, _ role: String?, range: Bool = false, ip: Bool = false) -> Bool {
-        KeystrokePolicy.allowsTyping(isWebEngine: web, focusedRole: role, hasTextSelectionRange: range, hasInsertionPoint: ip)
+    func ok(_ swallows: Bool, _ role: String?, range: Bool = false, ip: Bool = false, editable: Bool = false) -> Bool {
+        KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: swallows, focusedRole: role, hasTextSelectionRange: range, hasInsertionPoint: ip, isEditable: editable)
     }
+    func swallows(_ frameworks: [String], _ bundleID: String = "") -> Bool {
+        KeystrokePolicy.swallowsUnhandledKeys(frameworkNames: frameworks, bundleID: bundleID)
+    }
+    // Contents/Frameworks names from apps on Jack's Mac (Oct 7).
+    let zoom = ["AnnoUI.bundle", "CptHost.app", "ZoomCefHelper (GPU).app", "ZoomCefHelper (Plugin).app",
+                "ZoomCefHelper (Renderer).app", "ZoomCefHelper.app", "ZoomKit.framework", "zWebHomePageRes.bundle"]
+    let electron = ["Electron Framework.framework", "Mantle.framework", "ReactiveObjC.framework", "Squirrel.framework"]
+    let chrome = ["Google Chrome Framework.framework"]
+    let cefApp = ["Chromium Embedded Framework.framework", "libcef.dylib"]
+
+    // Which apps swallow unhandled keys.
+    expect(!swallows(zoom, "us.zoom.xos"), "Zoom is a native app with an embedded web view, not a browser")
+    expect(swallows(electron, "com.tinyspeck.slackmacgap"), "Slack (Electron) swallows unhandled keys")
+    expect(swallows(electron, "com.example.unknown-electron-app"), "any Electron app")
+    expect(swallows(chrome, "com.google.Chrome"), "Chrome")
+    expect(swallows([], "com.apple.Safari"), "Safari by bundle id")
+    expect(swallows([], "company.thebrowser.Browser"), "Arc by bundle id")
+    expect(swallows(["Microsoft Edge Framework.framework"]), "Edge")
+    expect(swallows(["Brave Browser Framework.framework"]), "Brave")
+    expect(!swallows(cefApp), "CEF apps (Spotify-style) embed a web view in a native app")
+    expect(!swallows(["Spacefinder.framework", "ChromeCastKit.framework"]), "loose name matches are not browsers")
+    expect(!swallows([], "us.zoom.xos"), "no frameworks: native")
+    expect(!swallows([], "com.apple.finder"), "Finder: native")
+
+    // The Oct 7 Zoom home window, whatever AX reports for its focus.
+    let zoomSwallows = swallows(zoom, "us.zoom.xos")
+    expect(!ok(zoomSwallows, "AXWindow"), "Zoom home window: no keystrokes")
+    expect(!ok(zoomSwallows, "AXWebArea"), "Zoom home page (CEF web area): no keystrokes")
+    expect(!ok(zoomSwallows, "AXWebArea", range: true), "a selection range alone does not make a web page editable")
+    expect(!ok(zoomSwallows, "AXGroup"), "Zoom page group: no keystrokes")
+    expect(!ok(zoomSwallows, "AXButton"), "Zoom Join/New Meeting button: no keystrokes")
+    expect(!ok(zoomSwallows, "AXStaticText"), "Zoom page text: no keystrokes")
+    expect(!ok(zoomSwallows, nil), "Zoom with no focused element: no keystrokes")
+    expect(ok(zoomSwallows, "AXTextArea"), "Zoom chat box still gets dictation")
+    expect(ok(zoomSwallows, "AXTextField"), "Zoom search / meeting ID field still gets dictation")
+
+    // Other native apps.
     expect(!ok(false, "AXWindow"), "Zoom meeting window: no keystrokes, no beeps")
     expect(!ok(false, "AXGroup"), "native group view: no keystrokes")
     expect(!ok(false, "AXButton"), "focused button: no keystrokes")
-    expect(ok(false, "AXTextArea"), "Zoom chat box still gets dictation")
     expect(!ok(false, "AXOutline"), "Finder list / Notes sidebar skipped")
+    expect(!ok(false, "AXList"), "native list: no keystrokes")
+    expect(!ok(false, "AXImage"), "image view: no keystrokes")
+    expect(!ok(false, "AXScrollArea"), "scroll area: no keystrokes")
+    expect(!ok(false, "AXApplication"), "app with no window: no keystrokes")
+    expect(!ok(false, nil), "native app, AX sees no focus: no keystrokes")
+    expect(!ok(false, "unknown"), "focus with no role: no keystrokes")
+    expect(!ok(false, "AXWebArea"), "web view in a native app (Mail message, App Store): no keystrokes")
+    expect(ok(false, "AXWebArea", editable: true), "editable web document in a native app")
     expect(ok(false, "AXTextField"), "Finder rename field takes dictation")
+    expect(ok(false, "AXTextArea"), "Notes / Terminal text area")
+    expect(ok(false, "AXSearchField"), "search field")
+    expect(ok(false, "AXComboBox"), "combo box")
     expect(ok(false, "AXCell"), "spreadsheet cell: typing starts editing")
-    expect(ok(false, "AXGroup", ip: true), "custom text view with an insertion point (terminals)")
+    expect(ok(false, "AXGroup", ip: true), "custom text view with a caret (terminals)")
     expect(ok(false, "AXGroup", range: true), "custom text view with a text selection range")
-    expect(ok(true, "AXGroup"), "web engines never beep: unchanged")
-    expect(ok(false, nil), "AX can't see focus: unchanged")
-    expect(liveSource.contains("FieldEditor.focusedTakesKeystrokes()"), "HID typing checks the focus first")
+    expect(ok(false, "AXGroup", editable: true), "custom view whose value AX can set")
+
+    // Browsers and Electron keep typing even when AX focus lags or is missing.
+    expect(ok(true, nil), "Chrome before its AX tree wakes: keeps typing")
+    expect(ok(true, "AXWebArea"), "web page in a browser: keeps typing")
+    expect(ok(true, "AXGroup"), "Slack/Cursor focus lagging a click: keeps typing")
+
+    // Every keystroke typing path checks the focus.
+    let typistSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/Typist.swift"), encoding: .utf8)
+    let editorSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
+    expect(liveSource.contains("FieldEditor.focusedTakesKeystrokes()"), "live phrases check the focus first")
+    expect(typistSource.contains("checkFocus: Bool = true") && typistSource.contains("FieldEditor.focusedTakesKeystrokes()"),
+           "other typing (paste-text commands) checks the focus by default")
+    expect(editorSource.contains("KeystrokePolicy.swallowsUnhandledKeys("), "keystroke check uses the browser-engine test")
+    expect(!editorSource.contains("isWebEngine: webEngine"), "not the old web-engine test that matched Zoom's CEF helpers")
     expect(!liveSource.contains("com.apple.finder"), "Finder special case replaced by the general rule")
 }
 

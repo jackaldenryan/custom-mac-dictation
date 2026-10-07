@@ -72,29 +72,59 @@ public enum PhrasePathLock {
 
 /// Whether dictated keystrokes may be sent to the focused element.
 ///
-/// Why: a native (AppKit) app beeps for every keystroke that no text field
-/// takes. Dictating with a Zoom meeting window in front typed each word as
+/// Why: a native (AppKit) app beeps for every keystroke that nothing takes.
+/// Dictating with a Zoom meeting window in front typed each word as
 /// keystrokes into the meeting view, so every phrase made a string of alert
-/// "boop"s (Oct 3 log: "Typed 4 utf16 into Zoom" during meetings). Finder
-/// and the Notes sidebar were special-cased before; this is the general rule.
+/// "boop"s (Oct 3). The Zoom home window kept beeping (Oct 7 log: "Typed 4
+/// utf16 into Zoom" outside meetings) because Zoom ships "ZoomCefHelper"
+/// apps, the old web-engine test matched "cef", and web engines were exempt.
+/// But an embedded web view (CEF, WKWebView) in a native app hands unhandled
+/// keys back to the app, which beeps.
 ///
-/// Web engines (Chrome, Slack, Cursor, any page) are left alone: they never
-/// beep for unhandled keys, and their AX focus can lag a click into a field.
-/// If AX can't see a focused element at all, typing goes ahead as before.
+/// Rule: keystrokes go where something takes text. Only apps whose whole
+/// window is a browser engine (browsers, Electron apps) are exempt: they
+/// swallow unhandled keys silently, and their AX focus can lag a click into
+/// a field or be missing until their accessibility tree wakes up.
 public enum KeystrokePolicy {
     static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
     /// Typing here starts editing (spreadsheet cells).
     static let typeToEditRoles: Set<String> = ["AXCell", "AXTable", "AXGrid"]
 
+    /// Apps whose UI is a full browser engine. Not CEF or other embedded web
+    /// views ("Chromium Embedded Framework", Zoom's "ZoomCefHelper").
+    public static func swallowsUnhandledKeys(frameworkNames: [String], bundleID: String) -> Bool {
+        if AXWritePolicy.webEngineBundleIDs.contains(bundleID) { return true }
+        return frameworkNames.contains { name in
+            let n = name.lowercased()
+            return n.hasPrefix("electron framework")
+                || n.hasSuffix("chrome framework.framework")
+                || n.hasPrefix("chromium framework")
+                || n.hasPrefix("microsoft edge framework")
+                || n.hasPrefix("brave browser framework")
+                || n.hasPrefix("vivaldi framework")
+                || n.hasPrefix("opera framework")
+        }
+    }
+
+    /// - focusedRole: nil when AX shows no focused element at all.
+    /// - hasTextSelectionRange / hasInsertionPoint: a caret or text selection
+    ///   (custom text views such as terminals).
+    /// - isEditable: AX says the value can be set, or the element sits in
+    ///   editable web content.
     public static func allowsTyping(
-        isWebEngine: Bool,
+        swallowsUnhandledKeys: Bool,
         focusedRole: String?,
         hasTextSelectionRange: Bool,
-        hasInsertionPoint: Bool
+        hasInsertionPoint: Bool,
+        isEditable: Bool = false
     ) -> Bool {
-        if isWebEngine { return true }
-        guard let role = focusedRole else { return true }
+        if swallowsUnhandledKeys { return true }
+        // A native app with no focused element has nowhere to put text.
+        guard let role = focusedRole else { return false }
         if textRoles.contains(role) || typeToEditRoles.contains(role) { return true }
-        return hasTextSelectionRange || hasInsertionPoint
+        // A whole web page in a native app (Zoom home window): only if the
+        // page itself is editable; a field in it is focused as its own role.
+        if role == "AXWebArea" { return isEditable }
+        return hasTextSelectionRange || hasInsertionPoint || isEditable
     }
 }

@@ -13,7 +13,7 @@ public enum FieldEditor {
     /// Apps that answered an AX write with success but did not show the
     /// text. Never AX-write there again this session (see AXWritePolicy).
     nonisolated(unsafe) private static var untrustedBundleIDs: Set<String> = []
-    nonisolated(unsafe) private static var webEngineCache: [String: Bool] = [:]
+    nonisolated(unsafe) private static var frameworkCache: [String: [String]] = [:]
 
     public static func clearLive() {
         live = nil
@@ -111,24 +111,39 @@ public enum FieldEditor {
     }
 
     /// Whether dictated keystrokes would land in something that takes text
-    /// (see KeystrokePolicy), plus the focused role for the log.
-    public static func focusedTakesKeystrokes() -> (allowed: Bool, role: String) {
-        guard let el = focusedElement() else { return (true, "none") }
-        let role = stringValue(el, kAXRoleAttribute as CFString)
-        let app = owningApp(el)
-        let webEngine = isWebEngineApp(app)
-            || AXWritePolicy.webEngineBundleIDs.contains(app?.bundleIdentifier ?? "")
-            || isInsideWebArea(el)
-        var names: CFArray?
-        AXUIElementCopyAttributeNames(el, &names)
-        let attributes = (names as? [String]) ?? []
+    /// (see KeystrokePolicy), plus the focused role and app for the log.
+    public static func focusedTakesKeystrokes() -> (allowed: Bool, role: String, app: String) {
+        let el = focusedElement()
+        let app = el.flatMap(owningApp) ?? NSWorkspace.shared.frontmostApplication
+        let appName = app?.localizedName ?? "unknown"
+        let swallows = KeystrokePolicy.swallowsUnhandledKeys(
+            frameworkNames: frameworkNames(app),
+            bundleID: app?.bundleIdentifier ?? ""
+        )
+        guard let el else {
+            let allowed = KeystrokePolicy.allowsTyping(
+                swallowsUnhandledKeys: swallows, focusedRole: nil,
+                hasTextSelectionRange: false, hasInsertionPoint: false
+            )
+            return (allowed, "no focused element", appName)
+        }
+        let role = stringValue(el, kAXRoleAttribute as CFString) ?? "unknown"
+        var caret: CFTypeRef?
+        let hasCaret = AXUIElementCopyAttributeValue(el, kAXInsertionPointLineNumberAttribute as CFString, &caret) == .success
+            && caret != nil
+        var editableAncestor: CFTypeRef?
+        let editable = isSettable(el, kAXValueAttribute as CFString)
+            || isSettable(el, kAXSelectedTextAttribute as CFString)
+            || (AXUIElementCopyAttributeValue(el, "AXEditableAncestor" as CFString, &editableAncestor) == .success
+                && editableAncestor != nil)
         let allowed = KeystrokePolicy.allowsTyping(
-            isWebEngine: webEngine,
+            swallowsUnhandledKeys: swallows,
             focusedRole: role,
             hasTextSelectionRange: selectedRange(el) != nil,
-            hasInsertionPoint: attributes.contains(kAXInsertionPointLineNumberAttribute as String)
+            hasInsertionPoint: hasCaret,
+            isEditable: editable
         )
-        return (allowed, role ?? "unknown")
+        return (allowed, role, appName)
     }
 
     private static func firstSelectedText(from start: AXUIElement?) -> String? {
@@ -193,14 +208,18 @@ public enum FieldEditor {
     }
 
     private static func isWebEngineApp(_ app: NSRunningApplication?) -> Bool {
-        guard let app, let url = app.bundleURL else { return false }
+        AXWritePolicy.frameworksIndicateWebEngine(frameworkNames(app))
+    }
+
+    /// Names in the app's Contents/Frameworks, cached per app.
+    private static func frameworkNames(_ app: NSRunningApplication?) -> [String] {
+        guard let app, let url = app.bundleURL else { return [] }
         let key = app.bundleIdentifier ?? url.path
-        if let cached = webEngineCache[key] { return cached }
+        if let cached = frameworkCache[key] { return cached }
         let frameworks = url.appendingPathComponent("Contents/Frameworks")
         let names = (try? FileManager.default.contentsOfDirectory(atPath: frameworks.path)) ?? []
-        let result = AXWritePolicy.frameworksIndicateWebEngine(names)
-        webEngineCache[key] = result
-        return result
+        frameworkCache[key] = names
+        return names
     }
 
     private static func isInsideWebArea(_ el: AXUIElement) -> Bool {

@@ -152,7 +152,7 @@ public enum LivePhrase {
                 if text.isEmpty {
                     Typist.deleteSelection()
                 } else {
-                    Typist.typeText(text, preferAX: false)
+                    Typist.typeText(text, preferAX: false, checkFocus: false)
                 }
                 Typist.releaseModifiers()
                 lastInsertPath = .hid
@@ -173,14 +173,15 @@ public enum LivePhrase {
     }
 
     /// HID typing must not go where no text can land: native apps beep for
-    /// every keystroke nothing takes (Zoom meeting window), and Finder or the
-    /// Notes sidebar act on typed letters. KeystrokePolicy decides from AX
-    /// focus, once per phrase (a phrase already typing keeps typing).
+    /// every keystroke nothing takes (Zoom windows), and Finder or the Notes
+    /// sidebar act on typed letters. KeystrokePolicy decides from AX focus,
+    /// once per phrase (a phrase already typing keeps typing).
     private static func hidFallbackAllowed() -> Bool {
         let target = FieldEditor.focusedTakesKeystrokes()
-        if !target.allowed {
-            let app = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
-            DiagnosticLog.line("Live phrase skipped; focus in \(app) is \(target.role), not a text field (keystrokes would beep)")
+        if target.allowed {
+            DiagnosticLog.line("Typing into \(target.app) (\(target.role))")
+        } else {
+            DiagnosticLog.line("Live phrase skipped; focus in \(target.app) is \(target.role), not a text field (keystrokes would beep)")
         }
         return target.allowed
     }
@@ -191,7 +192,7 @@ public enum LivePhrase {
             // stale or parent-level selections, and a stray backspace eats a
             // character of earlier text. A real selection is replaced by the
             // typed text anyway, as with the shipped release.
-            Typist.typeText(text, preferAX: false)
+            Typist.typeText(text, preferAX: false, checkFocus: false)
         } else {
             // Suffix-diff revision: a recognizer correction usually changes
             // the tail ("reciept" -> "receipt"), so keep the shared prefix
@@ -200,10 +201,10 @@ public enum LivePhrase {
             // less flicker.
             let keep = commonPrefixKeepCount(displayed, text)
             if keep == displayed.count, text.count >= displayed.count {
-                Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false)
+                Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false, checkFocus: false)
             } else {
                 Typist.deleteBackward(times: displayed.count - keep)
-                Typist.typeText(String(text.dropFirst(keep)), preferAX: false)
+                Typist.typeText(String(text.dropFirst(keep)), preferAX: false, checkFocus: false)
             }
         }
         Typist.releaseModifiers()
