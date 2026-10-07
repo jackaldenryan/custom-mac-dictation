@@ -881,4 +881,86 @@ do {
     expect(!window.contains("SoundFeedback.play(named: name)"), "choosing a sound does not play it")
 }
 
+// Hold-to-talk (Oct 7): new installs default to holding a key (Right
+// Command) to talk; the mic is off otherwise and text is typed on release.
+// Settings saved before this option keep listening all the time.
+do {
+    expect(AppSettings.default.holdToTalk.enabled, "new installs: hold to talk")
+    expect(AppSettings.default.holdToTalk.key == .rightCommand, "default key: Right Command")
+    let legacy = Data(#"{"hasCompletedOnboarding":true,"preferredListeningState":"listening"}"#.utf8)
+    expect((try? JSONDecoder().decode(PrefsSettings.self, from: legacy))?.holdToTalk.enabled == false, "existing settings.json keeps always listening")
+    expect((try? JSONDecoder().decode(AppSettings.self, from: legacy))?.holdToTalk.enabled == false, "existing app settings keep always listening")
+    var app = AppSettings.default
+    app.holdToTalk = HoldToTalkSettings(enabled: true, key: HoldKey(keyCode: 105, name: "F13"))
+    let round = (try? JSONEncoder().encode(PrefsSettings(app))).flatMap { try? JSONDecoder().decode(PrefsSettings.self, from: $0) }
+    expect(round?.holdToTalk == app.holdToTalk, "hold key saved in settings.json")
+    app.holdToTalk.enabled = false
+    let off = (try? JSONEncoder().encode(PrefsSettings(app))).flatMap { try? JSONDecoder().decode(PrefsSettings.self, from: $0) }
+    expect(off?.holdToTalk.enabled == false, "always-on choice saved")
+
+    // Key names and modifier bits.
+    expect(HoldKey.rightCommand.isModifier && HoldKey.modifierMask(keyCode: 54) == 0x10, "right command has its own flag bit")
+    expect(HoldKey.modifierMask(keyCode: 55) == 0x08, "left command bit differs from right")
+    expect(HoldKey.modifierMask(keyCode: 63) == CGEventFlags.maskSecondaryFn.rawValue, "fn / globe")
+    expect(!HoldKey(keyCode: 105, name: "F13").isModifier, "F13 is an ordinary key")
+    expect(HoldKey.named(keyCode: 105, characters: nil).name == "F13", "recorded F13 named")
+    expect(HoldKey.named(keyCode: 61, characters: nil) == HoldKey.presets.first { $0.keyCode == 61 }, "recorded modifier uses its preset")
+    expect(HoldKey.named(keyCode: 0, characters: "a").name == "A", "recorded letter named")
+    expect(Set(HoldKey.presets.map(\.keyCode)).count == HoldKey.presets.count, "presets are distinct")
+    expect(HoldKey.presets.allSatisfy(\.isModifier), "presets are modifier keys")
+
+    // Right Command: down/up from flagsChanged; other keys pass through.
+    var t = HoldKeyTracker(key: .rightCommand)
+    let cmdDown: UInt64 = CGEventFlags.maskCommand.rawValue | 0x10
+    expect(t.handle(.flagsChanged(keyCode: 54, flags: cmdDown)) == .init(action: .begin, swallow: false), "press: start listening")
+    expect(t.isHeld, "held")
+    expect(t.handle(.flagsChanged(keyCode: 54, flags: cmdDown)) == .init(action: .none, swallow: false), "no double start")
+    expect(t.handle(.flagsChanged(keyCode: 54, flags: 0)) == .init(action: .end(cancelled: false), swallow: false), "release: type what was heard")
+    expect(!t.isHeld, "released")
+    expect(t.handle(.flagsChanged(keyCode: 55, flags: CGEventFlags.maskCommand.rawValue | 0x08)) == .init(action: .none, swallow: false), "left command is not the hold key")
+    expect(t.handle(.keyDown(keyCode: 0, isRepeat: false)) == .init(action: .none, swallow: false), "typing passes through")
+
+    // Right Command used in a shortcut (⌘Tab): discard.
+    _ = t.handle(.flagsChanged(keyCode: 54, flags: cmdDown))
+    expect(t.handle(.keyDown(keyCode: 48, isRepeat: false)) == .init(action: .none, swallow: false), "the shortcut still works")
+    expect(t.handle(.flagsChanged(keyCode: 54, flags: 0)) == .init(action: .end(cancelled: true), swallow: false), "shortcut: recording thrown away")
+    _ = t.handle(.flagsChanged(keyCode: 54, flags: cmdDown))
+    expect(t.handle(.flagsChanged(keyCode: 54, flags: 0)) == .init(action: .end(cancelled: false), swallow: false), "next hold is not cancelled")
+
+    // Holding left command while right command is still down: right stays held.
+    _ = t.handle(.flagsChanged(keyCode: 54, flags: cmdDown))
+    expect(t.handle(.flagsChanged(keyCode: 55, flags: cmdDown | 0x08)) == .init(action: .none, swallow: false), "other command key: no change")
+    expect(t.handle(.flagsChanged(keyCode: 55, flags: cmdDown)) == .init(action: .none, swallow: false), "other command released: still held")
+    expect(t.isHeld, "right command still held")
+    _ = t.handle(.flagsChanged(keyCode: 54, flags: 0))
+
+    // Fn / Globe.
+    var fn = HoldKeyTracker(key: HoldKey(keyCode: 63, name: "Fn"))
+    expect(fn.handle(.flagsChanged(keyCode: 63, flags: CGEventFlags.maskSecondaryFn.rawValue)).action == .begin, "fn down")
+    expect(fn.handle(.flagsChanged(keyCode: 63, flags: 0)).action == .end(cancelled: false), "fn up")
+
+    // An ordinary key (F13): swallowed so apps never see it, repeats ignored.
+    var f13 = HoldKeyTracker(key: HoldKey(keyCode: 105, name: "F13"))
+    expect(f13.handle(.keyDown(keyCode: 105, isRepeat: false)) == .init(action: .begin, swallow: true), "F13 down: start, swallowed")
+    expect(f13.handle(.keyDown(keyCode: 105, isRepeat: true)) == .init(action: .none, swallow: true), "auto-repeat swallowed")
+    expect(f13.handle(.keyDown(keyCode: 0, isRepeat: false)) == .init(action: .none, swallow: false), "other keys pass")
+    expect(f13.handle(.keyUp(keyCode: 105)) == .init(action: .end(cancelled: false), swallow: true), "F13 up: type, swallowed")
+    expect(f13.handle(.keyUp(keyCode: 105)) == .init(action: .none, swallow: true), "stray key up ignored")
+    expect(f13.handle(.flagsChanged(keyCode: 54, flags: cmdDown)) == .init(action: .none, swallow: false), "modifiers pass")
+
+    // Session wiring.
+    let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(session.contains("if holdPhase != .idle { return }"), "no live typing while the key is held (keystrokes + held modifier = shortcuts)")
+    expect(session.contains("holdQueue.append(transcript)"), "phrases finished while held are typed on release")
+    expect(session.contains("await engine.finalizeNow()") && session.contains("holdFinalArrived"), "release finishes the last words before stopping")
+    expect(session.contains("startListening(persist: false)") && session.contains("stopCompletely(persist: false)"), "holds do not change the saved listening state")
+    expect(session.contains("if store.settings.holdToTalk.enabled {\n            await prewarm()"), "launch in hold mode: model ready, mic off")
+    let monitor = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/HoldToTalk.swift"), encoding: .utf8)
+    expect(monitor.contains("eventSourceUnixProcessID) == Int64(getpid())"), "our own typing never counts as the hold key")
+    expect(monitor.contains("tapDisabledByTimeout"), "a timed-out tap turns itself back on")
+    expect(monitor.contains("Thread {"), "the tap runs off the main thread")
+    let engineSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
+    expect(engineSource.contains("capture: Bool = true"), "engine can warm up without opening the mic")
+}
+
 print("CheckLogic passed")

@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sleepObserver.onScreenUnlocked = { [weak self] in
             guard let self else { return }
             Task {
-                if self.store.settings.preferredListeningState != .off {
+                if !self.store.settings.holdToTalk.enabled, self.store.settings.preferredListeningState != .off {
                     await self.session.startListening()
                 }
             }

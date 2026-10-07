@@ -118,6 +118,10 @@ private struct OnboardingView: View {
         case .micPicker:
             return "Pick the USB headset you actually use. You can change this later."
         case .done:
+            let hold = store.settings.holdToTalk
+            if hold.enabled {
+                return "Hold \(hold.key.name) while you talk; what you said is typed when you let go. To listen all the time instead, turn off “Hold a key to talk” in the Listen tab."
+            }
             return "Listening will start after you finish. Use this window or the Dock icon to turn it off. After the Mac sleeps, turn it back on from the window or Dock."
         }
     }
@@ -130,7 +134,7 @@ private struct OnboardingView: View {
         case .accessibility: return "Open Accessibility settings"
         case .assets: return "Download models"
         case .micPicker: return "Save microphone"
-        case .done: return "Start listening"
+        case .done: return store.settings.holdToTalk.enabled ? "Done" : "Start listening"
         }
     }
 

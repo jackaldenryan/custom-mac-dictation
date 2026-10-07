@@ -92,6 +92,8 @@ private struct AppRootView: View {
     @State private var customCommandSettleText = ""
     @State private var commandSettleUsesCustom = false
     @State private var section: AppSection = .listen
+    @State private var recordingHoldKey = false
+    @State private var holdKeyRecorder: Any?
     @State private var soundNames: [String] = SoundFeedback.availableSounds()
     @State private var vocabSearch = ""
     @State private var commandSearch = ""
@@ -221,6 +223,35 @@ private struct AppRootView: View {
                     .lineLimit(3)
             }
             Form {
+                Section {
+                    Toggle("Hold a key to talk", isOn: holdToTalkBinding)
+                    if settings.holdToTalk.enabled {
+                        HStack {
+                            Picker("Key", selection: holdKeyBinding) {
+                                ForEach(holdKeyChoices, id: \.keyCode) { key in
+                                    Text(key.name).tag(key.keyCode)
+                                }
+                            }
+                            Button(recordingHoldKey ? "Press a key… (Esc cancels)" : "Record another key…") {
+                                recordingHoldKey ? stopRecordingHoldKey() : startRecordingHoldKey()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        if !session.holdKeyWatching {
+                            Text("Can’t watch the keyboard. Turn on Accessibility for Custom Dictation in System Settings → Privacy & Security.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                } header: {
+                    Text("Listening mode")
+                } footer: {
+                    Text(settings.holdToTalk.enabled
+                         ? "The mic is off until you hold \(settings.holdToTalk.key.name). What you said is typed when you let go. Using the key in a shortcut (like ⌘Tab) throws that recording away."
+                         : "Always listening. Say “stop listening” or use the menu bar to pause.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Section {
                     ForEach(0..<min(settings.microphonePriority.count + 1, MicrophonePriority.maxLevels), id: \.self) { slot in
                         Picker(Self.micSlotTitle(slot), selection: microphoneBinding(slot)) {
@@ -754,6 +785,71 @@ private struct AppRootView: View {
                 }
             }
         )
+    }
+
+    private var holdToTalkBinding: Binding<Bool> {
+        Binding(
+            get: { settings.holdToTalk.enabled },
+            set: { on in
+                settings.holdToTalk.enabled = on
+                Task {
+                    await session.setHoldToTalk(enabled: on)
+                    settings = store.settings
+                }
+            }
+        )
+    }
+
+    /// The modifier presets, plus the saved key when it was recorded.
+    private var holdKeyChoices: [HoldKey] {
+        let saved = settings.holdToTalk.key
+        return HoldKey.presets.contains(where: { $0.keyCode == saved.keyCode }) ? HoldKey.presets : HoldKey.presets + [saved]
+    }
+
+    private var holdKeyBinding: Binding<UInt16> {
+        Binding(
+            get: { settings.holdToTalk.key.keyCode },
+            set: { code in
+                if let key = holdKeyChoices.first(where: { $0.keyCode == code }) { setHoldKey(key) }
+            }
+        )
+    }
+
+    private func setHoldKey(_ key: HoldKey) {
+        settings.holdToTalk.key = key
+        persist()
+        session.applyHoldToTalk()
+    }
+
+    /// Records the next key pressed in this window (any key or modifier).
+    private func startRecordingHoldKey() {
+        stopRecordingHoldKey()
+        recordingHoldKey = true
+        holdKeyRecorder = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            if event.type == .keyDown {
+                if event.keyCode == 53 { // Escape cancels
+                    stopRecordingHoldKey()
+                    return nil
+                }
+                setHoldKey(HoldKey.named(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers))
+                stopRecordingHoldKey()
+                return nil
+            }
+            // A modifier counts when it goes down.
+            if let mask = HoldKey.modifierMask(keyCode: event.keyCode),
+               let flags = event.cgEvent?.flags.rawValue, flags & mask != 0 {
+                setHoldKey(HoldKey.named(keyCode: event.keyCode, characters: nil))
+                stopRecordingHoldKey()
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func stopRecordingHoldKey() {
+        if let recorder = holdKeyRecorder { NSEvent.removeMonitor(recorder) }
+        holdKeyRecorder = nil
+        recordingHoldKey = false
     }
 
     private func soundBinding(_ event: SoundEvent) -> Binding<String> {

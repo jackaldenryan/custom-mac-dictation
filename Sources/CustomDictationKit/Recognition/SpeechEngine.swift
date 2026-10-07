@@ -46,10 +46,12 @@ public final class SpeechEngine: @unchecked Sendable {
         onAssetProgress?(1)
     }
 
-    public func start(microphoneUID: String?, vocabulary: [VocabEntry], commandPhrases: [String]) async throws {
+    /// - capture: false only prepares the analyzer (hold-to-talk warms it up
+    ///   at launch so the first press starts hearing right away).
+    public func start(microphoneUID: String?, vocabulary: [VocabEntry], commandPhrases: [String], capture: Bool = true) async throws {
         let signature = Self.signature(vocabulary: vocabulary, phrases: commandPhrases)
         if analyzer != nil, inputContinuation != nil, lastMicrophoneUID == microphoneUID, lastVocabSignature == signature {
-            if capture == nil {
+            if capture, self.capture == nil {
                 try startCapture(microphoneUID: microphoneUID)
                 DiagnosticLog.line("Capture resumed")
             }
@@ -116,7 +118,9 @@ public final class SpeechEngine: @unchecked Sendable {
         lastInputEnd = .zero
         lastSpeechEnd = .zero
         bufferCount = 0
-        try startCapture(microphoneUID: microphoneUID)
+        if capture {
+            try startCapture(microphoneUID: microphoneUID)
+        }
 
         resultsTask = Task { [weak self] in
             do {

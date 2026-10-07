@@ -264,7 +264,9 @@ public enum ConfigFolder {
 
     ## settings.json
 
-    Microphones (up to three, in order), login, onboarding, and sounds.
+    Microphones (up to three, in order), login, onboarding, sounds, and hold-to-talk.
+
+    `holdToTalk.enabled` (default true for new installs): the mic is off until you hold `holdToTalk.key` (default Right Command, key code 54); what you said is typed when you let go. False: always listening.
 
     `sounds.sounds` maps `startListening`, `stopListening`, `commandRan`, `commandFailed` to a macOS sound name (`Pop`, `Tink`, `Morse`, … or `""` for none). `sounds.speakFailures` says failures out loud ("I could not find Zoom").
 
@@ -363,6 +365,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     public var preferredListeningState: ListeningState
     public var sounds: SoundSettings
+    public var holdToTalk: HoldToTalkSettings
 
     public init(_ settings: AppSettings) {
         hasCompletedOnboarding = settings.hasCompletedOnboarding
@@ -370,6 +373,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         launchAtLogin = settings.launchAtLogin
         preferredListeningState = settings.preferredListeningState
         sounds = settings.sounds
+        holdToTalk = settings.holdToTalk
     }
 
     enum CodingKeys: String, CodingKey {
@@ -379,6 +383,7 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         case launchAtLogin
         case preferredListeningState
         case sounds
+        case holdToTalk
     }
 
     public init(from decoder: Decoder) throws {
@@ -391,6 +396,8 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? true
         preferredListeningState = try c.decodeIfPresent(ListeningState.self, forKey: .preferredListeningState) ?? .off
         sounds = try c.decodeIfPresent(SoundSettings.self, forKey: .sounds) ?? .default
+        // Saved before hold-to-talk existed: keep always listening.
+        holdToTalk = try c.decodeIfPresent(HoldToTalkSettings.self, forKey: .holdToTalk) ?? .legacy
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -400,5 +407,6 @@ public struct PrefsSettings: Codable, Equatable, Sendable {
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
         try c.encode(preferredListeningState, forKey: .preferredListeningState)
         try c.encode(sounds, forKey: .sounds)
+        try c.encode(holdToTalk, forKey: .holdToTalk)
     }
 }

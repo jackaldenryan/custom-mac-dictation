@@ -32,6 +32,20 @@ public final class ListeningSession: ObservableObject {
     private var earlyCommandText = ""
     private var ranEarly: EarlyCommand.Ran?
 
+    /// Hold-to-talk: .held while the key is down (nothing is typed yet),
+    /// .releasing while the last words are finished and typed, .discarding
+    /// when the key was used for a shortcut.
+    private enum HoldPhase { case idle, held, releasing, discarding }
+    private var holdPhase: HoldPhase = .idle
+    /// Finals heard while the key is held; typed on release.
+    private var holdQueue: [String] = []
+    private var holdGeneration = 0
+    private var holdStart: Task<Void, Never>?
+    private var holdFinalArrived = false
+    private var holdMonitor: HoldKeyMonitor?
+    /// False when hold-to-talk is on but the keyboard can't be watched.
+    @Published public private(set) var holdKeyWatching = false
+
     public init(store: SettingsStore = .shared) {
         self.store = store
         engine.onFinalTranscript = { [weak self] text in
@@ -67,12 +81,12 @@ public final class ListeningSession: ObservableObject {
         try await engine.ensureAssets()
     }
 
-    public func startListening() async {
+    public func startListening(persist: Bool = true) async {
         startGeneration += 1
         let generation = startGeneration
         lastError = ""
         DiagnosticLog.line("Start listening requested")
-        setState(.listening, persist: true)
+        setState(.listening, persist: persist)
         do {
             let settings = store.settings
             engine.finalizeDelaySeconds = settings.finalizeDelaySeconds
@@ -84,9 +98,7 @@ public final class ListeningSession: ObservableObject {
             try await engine.start(
                 microphoneUID: mic.uid,
                 vocabulary: settings.vocabulary.filter(\.enabled),
-                commandPhrases: settings.commands.filter(\.enabled).flatMap(\.phrases).map {
-                    $0.replacingOccurrences(of: " {app}", with: "").replacingOccurrences(of: "{app}", with: "")
-                } + AppNameResolver.commandPhrases()
+                commandPhrases: Self.commandPhrases(settings)
             )
             guard generation == startGeneration else { return }
             DiagnosticLog.line("Listening")
@@ -98,6 +110,113 @@ public final class ListeningSession: ObservableObject {
             onErrorMessage?(error.localizedDescription)
             setState(.off, persist: false)
         }
+    }
+
+    private static func commandPhrases(_ settings: AppSettings) -> [String] {
+        settings.commands.filter(\.enabled).flatMap(\.phrases).map {
+            $0.replacingOccurrences(of: " {app}", with: "").replacingOccurrences(of: "{app}", with: "")
+        } + AppNameResolver.commandPhrases()
+    }
+
+    // MARK: Hold-to-talk
+
+    /// Starts or stops watching the hold key to match the settings. Call at
+    /// launch and whenever hold-to-talk settings change.
+    public func applyHoldToTalk() {
+        let hold = store.settings.holdToTalk
+        guard hold.enabled else {
+            holdMonitor?.stop()
+            holdMonitor = nil
+            holdKeyWatching = false
+            return
+        }
+        if let monitor = holdMonitor, monitor.key == hold.key, holdKeyWatching { return }
+        holdMonitor?.stop()
+        let monitor = HoldKeyMonitor(key: hold.key) { [weak self] action in
+            Task { @MainActor in
+                switch action {
+                case .begin: self?.holdKeyDown()
+                case .end(let cancelled): self?.holdKeyUp(cancelled: cancelled)
+                case .none: break
+                }
+            }
+        }
+        holdKeyWatching = monitor.start()
+        holdMonitor = monitor
+    }
+
+    /// Turning hold-to-talk on stops always-on listening; turning it off
+    /// starts it.
+    public func setHoldToTalk(enabled: Bool) async {
+        _ = store.update { $0.holdToTalk.enabled = enabled }
+        applyHoldToTalk()
+        if enabled {
+            if state != .off { await stopCompletely(persist: true) }
+            await prewarm()
+        } else {
+            await startListening()
+        }
+    }
+
+    /// Loads the speech model without opening the mic, so the first hold
+    /// hears from the start.
+    public func prewarm() async {
+        guard state == .off else { return }
+        let settings = store.settings
+        try? await engine.start(
+            microphoneUID: chooseMicrophone().uid,
+            vocabulary: settings.vocabulary.filter(\.enabled),
+            commandPhrases: Self.commandPhrases(settings),
+            capture: false
+        )
+        DiagnosticLog.line("Hold-to-talk ready")
+    }
+
+    func holdKeyDown() {
+        guard store.settings.holdToTalk.enabled else { return }
+        // Already listening all the time (started from the menu or by voice).
+        if holdPhase == .idle, state == .listening { return }
+        holdGeneration += 1
+        holdPhase = .held
+        holdQueue = []
+        DiagnosticLog.line("Hold key down: listening")
+        holdStart = Task { [weak self] in
+            await self?.startListening(persist: false)
+        }
+    }
+
+    func holdKeyUp(cancelled: Bool) {
+        guard holdPhase == .held else { return }
+        let generation = holdGeneration
+        holdPhase = cancelled ? .discarding : .releasing
+        DiagnosticLog.line(cancelled ? "Hold key used in a shortcut: discarding" : "Hold key up: typing what was heard")
+        Task { [weak self] in
+            await self?.finishHold(generation: generation, cancelled: cancelled)
+        }
+    }
+
+    private func finishHold(generation: Int, cancelled: Bool) async {
+        await holdStart?.value
+        guard generation == holdGeneration else { return }
+        if cancelled {
+            holdQueue = []
+        } else {
+            let queued = holdQueue
+            holdQueue = []
+            for text in queued { handle(transcript: text) }
+            holdFinalArrived = false
+            let spoke = !lastPartial.isEmpty
+            await engine.finalizeNow()
+            // Wait for the last words' final (it can land just after).
+            let deadline = Date().addingTimeInterval(spoke ? 1.5 : 0.3)
+            while !holdFinalArrived, Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard generation == holdGeneration else { return }
+            }
+        }
+        guard generation == holdGeneration else { return }
+        holdPhase = .idle
+        await stopCompletely(persist: false)
     }
 
     public func suspend() {
@@ -184,6 +303,11 @@ public final class ListeningSession: ObservableObject {
     }
 
     public func restorePreferredState() async {
+        applyHoldToTalk()
+        if store.settings.holdToTalk.enabled {
+            await prewarm()
+            return
+        }
         switch store.settings.preferredListeningState {
         case .off:
             return
@@ -204,6 +328,9 @@ public final class ListeningSession: ObservableObject {
             earlyCommandText = ""
         }
         guard state == .listening else { return }
+        // Hold-to-talk types on release (keystrokes sent while a modifier
+        // is held would become shortcuts).
+        if holdPhase != .idle { return }
         if Router.shouldHoldLive(transcript: text, state: state, settings: store.settings) {
             if earlyCommandText != text, Router.isEarlyCommand(transcript: text, state: state, settings: store.settings) {
                 scheduleEarlyCommand(text)
@@ -235,6 +362,20 @@ public final class ListeningSession: ObservableObject {
     }
 
     private func handle(transcript: String) {
+        switch holdPhase {
+        case .held:
+            holdQueue.append(transcript)
+            lastPartial = ""
+            return
+        case .discarding:
+            lastPartial = ""
+            DiagnosticLog.line("Discarded (hold key used in a shortcut) text=\(transcript)")
+            return
+        case .releasing:
+            holdFinalArrived = true
+        case .idle:
+            break
+        }
         earlyCommandTask?.cancel()
         earlyCommandText = ""
         lastPartial = ""

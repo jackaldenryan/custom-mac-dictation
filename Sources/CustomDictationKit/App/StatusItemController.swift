@@ -105,7 +105,9 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var stateTitle: String {
         switch session.state {
-        case .off: return "Listening is off"
+        case .off:
+            let hold = store.settings.holdToTalk
+            return hold.enabled ? "Hold \(hold.key.name) to talk" : "Listening is off"
         case .suspended: return "Paused"
         case .listening: return "Listening"
         }
