@@ -133,8 +133,9 @@ public enum FieldEditor {
         }
         let role = stringValue(el, kAXRoleAttribute as CFString) ?? "unknown"
         var caret: CFTypeRef?
-        let hasCaret = AXUIElementCopyAttributeValue(el, kAXInsertionPointLineNumberAttribute as CFString, &caret) == .success
-            && caret != nil
+        let caretLine = AXUIElementCopyAttributeValue(el, kAXInsertionPointLineNumberAttribute as CFString, &caret) == .success
+            ? (caret as? NSNumber)?.intValue : nil
+        let hasCaret = KeystrokePolicy.isCaret(lineNumber: caretLine)
         var editableAncestor: CFTypeRef?
         let valueSettable = isSettable(el, kAXValueAttribute as CFString)
         let selectedTextSettable = isSettable(el, kAXSelectedTextAttribute as CFString)
@@ -154,7 +155,7 @@ public enum FieldEditor {
         // row in Chrome still got typing).
         let subrole = stringValue(el, kAXSubroleAttribute as CFString).map { " subrole=\($0)" } ?? ""
         let kind = browser ? "browser" : (swallows ? "electron" : "native")
-        let caretText = hasCaret ? "\((caret as? NSNumber)?.intValue ?? -1)" : "none"
+        let caretText = caretLine.map { $0 == NSNotFound ? "NSNotFound" : "\($0)" } ?? "none"
         let rangeText = range.map { "\($0.location)+\($0.length)" } ?? "none"
         let detail = "\(role) [\(kind)\(subrole) caret=\(caretText) range=\(rangeText) valueSettable=\(valueSettable) selectedTextSettable=\(selectedTextSettable) editableAncestor=\(hasEditableAncestor)]"
         return (allowed, detail, appName)

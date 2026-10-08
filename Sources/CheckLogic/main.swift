@@ -713,6 +713,21 @@ do {
     expect(!web("AXWebArea"), "GitHub page itself: no keystrokes")
     expect(!web("AXHeading"), "GitHub heading: no keystrokes")
     expect(!web("AXRow"), "GitHub file list row: no keystrokes")
+    // 0.1.46 still typed into a GitHub file row (Oct 7 log: "AXRow [browser
+    // subrole=AXOutlineRow caret=9223372036854775807 range=0+0
+    // valueSettable=false selectedTextSettable=false editableAncestor=false]").
+    // Chrome's "no caret" answer, NSNotFound, was read as a caret.
+    expect(!KeystrokePolicy.isCaret(lineNumber: NSNotFound), "NSNotFound is no caret")
+    expect(!KeystrokePolicy.isCaret(lineNumber: 9223372036854775807), "the logged value is no caret")
+    expect(!KeystrokePolicy.isCaret(lineNumber: nil), "no value: no caret")
+    expect(!KeystrokePolicy.isCaret(lineNumber: -1), "negative: no caret")
+    expect(KeystrokePolicy.isCaret(lineNumber: 0), "first line: caret")
+    expect(KeystrokePolicy.isCaret(lineNumber: 12), "line 12: caret")
+    expect(!web("AXRow", range: true, ip: KeystrokePolicy.isCaret(lineNumber: 9223372036854775807)), "the logged GitHub file row: no keystrokes")
+    // The same log's Claude text box: caret=0, editable.
+    expect(ok(true, "AXTextArea", range: true, ip: KeystrokePolicy.isCaret(lineNumber: 0), editable: true), "the logged Claude text box still types")
+    let caretSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
+    expect(caretSource.contains("KeystrokePolicy.isCaret(lineNumber: caretLine)"), "the caret check ignores Chrome's no-caret value")
     expect(!web("AXLink"), "link: no keystrokes")
     expect(!web("AXButton"), "button: no keystrokes")
     expect(!web("AXCell"), "web table cell: no keystrokes")

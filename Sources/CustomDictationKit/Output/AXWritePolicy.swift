@@ -128,6 +128,15 @@ public enum KeystrokePolicy {
         }
     }
 
+    /// Whether an AXInsertionPointLineNumber value means a real text caret.
+    /// Chrome answers NSNotFound (Int.max) for elements with no caret: a
+    /// GitHub file row in the log read "caret=9223372036854775807" and was
+    /// taken as a caret, so typing went to the page (Oct 7).
+    public static func isCaret(lineNumber: Int?) -> Bool {
+        guard let line = lineNumber else { return false }
+        return line >= 0 && line != NSNotFound
+    }
+
     /// Web browsers (and their installed web apps), as opposed to Electron
     /// apps: pages there have single-key shortcuts (GitHub "t", "s", ".").
     public static let browserBundleIDs: Set<String> = [
