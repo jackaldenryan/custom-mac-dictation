@@ -120,9 +120,13 @@ public enum FieldEditor {
             frameworkNames: frameworkNames(app),
             bundleID: app?.bundleIdentifier ?? ""
         )
+        let browser = KeystrokePolicy.isBrowser(
+            frameworkNames: frameworkNames(app),
+            bundleID: app?.bundleIdentifier ?? ""
+        )
         guard let el else {
             let allowed = KeystrokePolicy.allowsTyping(
-                swallowsUnhandledKeys: swallows, focusedRole: nil,
+                swallowsUnhandledKeys: swallows, isBrowser: browser, focusedRole: nil,
                 hasTextSelectionRange: false, hasInsertionPoint: false
             )
             return (allowed, "no focused element", appName)
@@ -138,6 +142,7 @@ public enum FieldEditor {
                 && editableAncestor != nil)
         let allowed = KeystrokePolicy.allowsTyping(
             swallowsUnhandledKeys: swallows,
+            isBrowser: browser,
             focusedRole: role,
             hasTextSelectionRange: selectedRange(el) != nil,
             hasInsertionPoint: hasCaret,

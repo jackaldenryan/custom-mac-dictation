@@ -88,17 +88,32 @@ public enum PhrasePathLock {
 /// But an embedded web view (CEF, WKWebView) in a native app hands unhandled
 /// keys back to the app, which beeps.
 ///
-/// Rule: keystrokes go where something takes text. Only apps whose whole
-/// window is a browser engine (browsers, Electron apps) are exempt: they
-/// swallow unhandled keys silently, and their AX focus can lag a click into
-/// a field or be missing until their accessibility tree wakes up.
+/// Browsers and Electron apps were exempt (they never beep), so on a GitHub
+/// page with no text box focused, dictated words became page shortcuts:
+/// "test" typed "t", GitHub's file finder (Oct 7 log: "Typing into Google
+/// Chrome (AXWebArea)", "(AXHeading)", "(AXRow)").
+///
+/// Rule: keystrokes go only where something takes text. In a browser that
+/// means a text role or editable web content; a page, heading, row or link
+/// gets nothing. Browser AX focus can lag a click into a field by a moment,
+/// but that costs nothing: every new live result re-checks the focus until
+/// the phrase starts typing, and each result carries the whole phrase so
+/// far. A browser showing no focused element at all (accessibility tree
+/// still asleep) keeps typing, since nothing can be told there.
+///
+/// Electron apps (Slack, Claude, Cursor) stay exempt: they send typing from
+/// anywhere in the window to their message box, and the logs show dictation
+/// landing there while AX reported the window ("Typing into Claude
+/// (AXWebArea)", "Slack (AXGroup)").
 public enum KeystrokePolicy {
     static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
     /// Typing here starts editing (spreadsheet cells).
     static let typeToEditRoles: Set<String> = ["AXCell", "AXTable", "AXGrid"]
 
-    /// Apps whose UI is a full browser engine. Not CEF or other embedded web
-    /// views ("Chromium Embedded Framework", Zoom's "ZoomCefHelper").
+    /// Apps whose UI is a full browser engine (browsers, Electron). Not CEF
+    /// or other embedded web views ("Chromium Embedded Framework", Zoom's
+    /// "ZoomCefHelper"). Unhandled keys there are silent but can trigger page
+    /// shortcuts.
     public static func swallowsUnhandledKeys(frameworkNames: [String], bundleID: String) -> Bool {
         if AXWritePolicy.webEngineBundleIDs.contains(bundleID) || AXWritePolicy.isBrowserAppShim(bundleID) { return true }
         return frameworkNames.contains { name in
@@ -113,6 +128,30 @@ public enum KeystrokePolicy {
         }
     }
 
+    /// Web browsers (and their installed web apps), as opposed to Electron
+    /// apps: pages there have single-key shortcuts (GitHub "t", "s", ".").
+    public static let browserBundleIDs: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium",
+        "com.brave.Browser", "com.microsoft.edgemac", "company.thebrowser.Browser",
+        "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "com.apple.Safari",
+        "com.apple.SafariTechnologyPreview",
+    ]
+
+    public static func isBrowser(frameworkNames: [String], bundleID: String) -> Bool {
+        if browserBundleIDs.contains(bundleID) || AXWritePolicy.isBrowserAppShim(bundleID) { return true }
+        return frameworkNames.contains { name in
+            let n = name.lowercased()
+            return n.hasSuffix("chrome framework.framework")
+                || n.hasPrefix("chromium framework")
+                || n.hasPrefix("microsoft edge framework")
+                || n.hasPrefix("brave browser framework")
+                || n.hasPrefix("vivaldi framework")
+                || n.hasPrefix("opera framework")
+        }
+    }
+
+    /// - swallowsUnhandledKeys: a browser or Electron app.
+    /// - isBrowser: a web browser (not Electron).
     /// - focusedRole: nil when AX shows no focused element at all.
     /// - hasTextSelectionRange / hasInsertionPoint: a caret or text selection
     ///   (custom text views such as terminals).
@@ -120,15 +159,25 @@ public enum KeystrokePolicy {
     ///   editable web content.
     public static func allowsTyping(
         swallowsUnhandledKeys: Bool,
+        isBrowser: Bool = false,
         focusedRole: String?,
         hasTextSelectionRange: Bool,
         hasInsertionPoint: Bool,
         isEditable: Bool = false
     ) -> Bool {
-        if swallowsUnhandledKeys { return true }
-        // A native app with no focused element has nowhere to put text.
-        guard let role = focusedRole else { return false }
-        if textRoles.contains(role) || typeToEditRoles.contains(role) { return true }
+        // Electron: typing anywhere goes to the app's message box.
+        if swallowsUnhandledKeys, !isBrowser { return true }
+        // No focused element: a native app has nowhere to put text; a
+        // browser whose accessibility tree is asleep can't be told apart.
+        guard let role = focusedRole else { return swallowsUnhandledKeys || isBrowser }
+        if textRoles.contains(role) { return true }
+        if isBrowser {
+            // Web content: only text roles or editable content (Gmail's
+            // compose body, a contenteditable editor). A selection range
+            // alone can be read-only page text.
+            return isEditable || hasInsertionPoint
+        }
+        if typeToEditRoles.contains(role) { return true }
         // A whole web page in a native app (Zoom home window): only if the
         // page itself is editable; a field in it is focused as its own role.
         if role == "AXWebArea" { return isEditable }

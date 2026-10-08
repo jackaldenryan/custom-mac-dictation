@@ -181,7 +181,7 @@ public enum LivePhrase {
         if target.allowed {
             DiagnosticLog.line("Typing into \(target.app) (\(target.role))")
         } else {
-            DiagnosticLog.line("Live phrase skipped; focus in \(target.app) is \(target.role), not a text field (keystrokes would beep)")
+            DiagnosticLog.line("Live phrase skipped; focus in \(target.app) is \(target.role), not a text field (keys would beep or trigger shortcuts)")
         }
         return target.allowed
     }

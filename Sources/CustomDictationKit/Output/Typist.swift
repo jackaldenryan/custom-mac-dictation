@@ -23,7 +23,7 @@ public enum Typist {
         if checkFocus {
             let target = FieldEditor.focusedTakesKeystrokes()
             guard target.allowed else {
-                DiagnosticLog.line("Type skipped; focus in \(target.app) is \(target.role), not a text field (keystrokes would beep)")
+                DiagnosticLog.line("Type skipped; focus in \(target.app) is \(target.role), not a text field (keys would beep or trigger shortcuts)")
                 return
             }
         }

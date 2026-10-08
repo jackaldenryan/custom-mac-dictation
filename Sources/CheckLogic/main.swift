@@ -626,8 +626,11 @@ do {
 // (browsers, Electron) are exempt now; everything else needs a focus that
 // takes text.
 do {
-    func ok(_ swallows: Bool, _ role: String?, range: Bool = false, ip: Bool = false, editable: Bool = false) -> Bool {
-        KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: swallows, focusedRole: role, hasTextSelectionRange: range, hasInsertionPoint: ip, isEditable: editable)
+    func ok(_ swallows: Bool, _ role: String?, range: Bool = false, ip: Bool = false, editable: Bool = false, browser: Bool = false) -> Bool {
+        KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: swallows, isBrowser: browser, focusedRole: role, hasTextSelectionRange: range, hasInsertionPoint: ip, isEditable: editable)
+    }
+    func web(_ role: String?, range: Bool = false, ip: Bool = false, editable: Bool = false) -> Bool {
+        ok(true, role, range: range, ip: ip, editable: editable, browser: true)
     }
     func swallows(_ frameworks: [String], _ bundleID: String = "") -> Bool {
         KeystrokePolicy.swallowsUnhandledKeys(frameworkNames: frameworks, bundleID: bundleID)
@@ -636,14 +639,14 @@ do {
     let zoom = ["AnnoUI.bundle", "CptHost.app", "ZoomCefHelper (GPU).app", "ZoomCefHelper (Plugin).app",
                 "ZoomCefHelper (Renderer).app", "ZoomCefHelper.app", "ZoomKit.framework", "zWebHomePageRes.bundle"]
     let electron = ["Electron Framework.framework", "Mantle.framework", "ReactiveObjC.framework", "Squirrel.framework"]
-    let chrome = ["Google Chrome Framework.framework"]
+    let chromeFrameworks = ["Google Chrome Framework.framework"]
     let cefApp = ["Chromium Embedded Framework.framework", "libcef.dylib"]
 
     // Which apps swallow unhandled keys.
     expect(!swallows(zoom, "us.zoom.xos"), "Zoom is a native app with an embedded web view, not a browser")
     expect(swallows(electron, "com.tinyspeck.slackmacgap"), "Slack (Electron) swallows unhandled keys")
     expect(swallows(electron, "com.example.unknown-electron-app"), "any Electron app")
-    expect(swallows(chrome, "com.google.Chrome"), "Chrome")
+    expect(swallows(chromeFrameworks, "com.google.Chrome"), "Chrome")
     expect(swallows([], "com.apple.Safari"), "Safari by bundle id")
     expect(swallows([], "company.thebrowser.Browser"), "Arc by bundle id")
     expect(swallows(["Microsoft Edge Framework.framework"]), "Edge")
@@ -657,7 +660,9 @@ do {
     // ("focus in Gmail is AXWebArea").
     let gmail = "com.google.Chrome.app.fmgjjmmmlfnkbppncabfkddbjimcfncm"
     expect(swallows([], gmail), "Chrome web apps (Gmail) are Chrome")
-    expect(ok(swallows([], gmail), "AXWebArea"), "Gmail web app takes dictation")
+    expect(KeystrokePolicy.isBrowser(frameworkNames: [], bundleID: gmail), "Gmail web app is a browser page")
+    expect(web("AXGroup", editable: true), "Gmail web app compose body takes dictation")
+    expect(web("AXTextField"), "Gmail web app search box takes dictation")
     expect(swallows([], "com.microsoft.edgemac.app.abcdef"), "Edge web apps")
     expect(swallows([], "com.brave.Browser.app.abcdef"), "Brave web apps")
     expect(!swallows([], "com.google.Chromecast"), "only real web-app shims")
@@ -697,10 +702,42 @@ do {
     expect(ok(false, "AXGroup", range: true), "custom text view with a text selection range")
     expect(ok(false, "AXGroup", editable: true), "custom view whose value AX can set")
 
-    // Browsers and Electron keep typing even when AX focus lags or is missing.
-    expect(ok(true, nil), "Chrome before its AX tree wakes: keeps typing")
-    expect(ok(true, "AXWebArea"), "web page in a browser: keeps typing")
-    expect(ok(true, "AXGroup"), "Slack/Cursor focus lagging a click: keeps typing")
+    // Browsers and Electron: page shortcuts (Oct 7). On GitHub with no text
+    // box focused, "test" typed "t" and opened the file finder. The log's
+    // focus for each phrase:
+    expect(KeystrokePolicy.isBrowser(frameworkNames: chromeFrameworks, bundleID: "com.google.Chrome"), "Chrome is a browser")
+    expect(KeystrokePolicy.isBrowser(frameworkNames: [], bundleID: "com.apple.Safari"), "Safari is a browser")
+    expect(KeystrokePolicy.isBrowser(frameworkNames: [], bundleID: "company.thebrowser.Browser"), "Arc is a browser")
+    expect(!KeystrokePolicy.isBrowser(frameworkNames: electron, bundleID: "com.tinyspeck.slackmacgap"), "Slack is not a browser")
+    expect(!KeystrokePolicy.isBrowser(frameworkNames: zoom, bundleID: "us.zoom.xos"), "Zoom is not a browser")
+    expect(!web("AXWebArea"), "GitHub page itself: no keystrokes")
+    expect(!web("AXHeading"), "GitHub heading: no keystrokes")
+    expect(!web("AXRow"), "GitHub file list row: no keystrokes")
+    expect(!web("AXLink"), "link: no keystrokes")
+    expect(!web("AXButton"), "button: no keystrokes")
+    expect(!web("AXCell"), "web table cell: no keystrokes")
+    expect(!web("AXStaticText", range: true), "read-only page text with a selection: no keystrokes")
+    expect(!web("AXGroup", range: true), "read-only group with a selection: no keystrokes")
+    // Where text goes, it still types.
+    expect(web("AXTextArea"), "GitHub comment box")
+    expect(web("AXTextField"), "GitHub search / address bar")
+    expect(web("AXSearchField"), "search field")
+    expect(web("AXComboBox"), "autocomplete box")
+    expect(web("AXGroup", editable: true), "contenteditable editor (Gmail, Notion)")
+    expect(web("AXWebArea", editable: true), "editable document (Google Docs style)")
+    expect(web("AXStaticText", editable: true), "caret on text inside an editor")
+    expect(web("AXGroup", ip: true), "element showing a caret")
+    expect(web(nil), "browser before its AX tree wakes: can't tell, keeps typing")
+    // Electron apps send typing from anywhere to their message box; the
+    // logs show dictation landing there with AX on the window.
+    let slack = swallows(electron, "com.tinyspeck.slackmacgap")
+    expect(ok(slack, "AXWebArea"), "Claude/Slack window focus: still types (goes to the message box)")
+    expect(ok(slack, "AXGroup"), "Slack message list focus: still types")
+    expect(ok(slack, "AXTextArea"), "Slack composer")
+    // Focus lagging a click into a web field: the phrase is skipped only
+    // until a live result sees the field; each result carries the whole
+    // phrase, so nothing is lost.
+    expect(liveSource.contains("guard !displayed.isEmpty || hidFallbackAllowed() else {"), "focus re-checked on every live result until the phrase types")
 
     // Every keystroke typing path checks the focus.
     let typistSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/Typist.swift"), encoding: .utf8)
