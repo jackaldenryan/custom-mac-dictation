@@ -136,19 +136,28 @@ public enum FieldEditor {
         let hasCaret = AXUIElementCopyAttributeValue(el, kAXInsertionPointLineNumberAttribute as CFString, &caret) == .success
             && caret != nil
         var editableAncestor: CFTypeRef?
-        let editable = isSettable(el, kAXValueAttribute as CFString)
-            || isSettable(el, kAXSelectedTextAttribute as CFString)
-            || (AXUIElementCopyAttributeValue(el, "AXEditableAncestor" as CFString, &editableAncestor) == .success
-                && editableAncestor != nil)
+        let valueSettable = isSettable(el, kAXValueAttribute as CFString)
+        let selectedTextSettable = isSettable(el, kAXSelectedTextAttribute as CFString)
+        let hasEditableAncestor = AXUIElementCopyAttributeValue(el, "AXEditableAncestor" as CFString, &editableAncestor) == .success
+            && editableAncestor != nil
+        let editable = valueSettable || selectedTextSettable || hasEditableAncestor
+        let range = selectedRange(el)
         let allowed = KeystrokePolicy.allowsTyping(
             swallowsUnhandledKeys: swallows,
             isBrowser: browser,
             focusedRole: role,
-            hasTextSelectionRange: selectedRange(el) != nil,
+            hasTextSelectionRange: range != nil,
             hasInsertionPoint: hasCaret,
             isEditable: editable
         )
-        return (allowed, role, appName)
+        // Which signals the decision saw, for the log (Oct 7: a GitHub file
+        // row in Chrome still got typing).
+        let subrole = stringValue(el, kAXSubroleAttribute as CFString).map { " subrole=\($0)" } ?? ""
+        let kind = browser ? "browser" : (swallows ? "electron" : "native")
+        let caretText = hasCaret ? "\((caret as? NSNumber)?.intValue ?? -1)" : "none"
+        let rangeText = range.map { "\($0.location)+\($0.length)" } ?? "none"
+        let detail = "\(role) [\(kind)\(subrole) caret=\(caretText) range=\(rangeText) valueSettable=\(valueSettable) selectedTextSettable=\(selectedTextSettable) editableAncestor=\(hasEditableAncestor)]"
+        return (allowed, detail, appName)
     }
 
     private static func firstSelectedText(from start: AXUIElement?) -> String? {
