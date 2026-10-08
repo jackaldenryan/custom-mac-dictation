@@ -1057,4 +1057,102 @@ do {
     expect(engine.contains("let modules: [any SpeechModule] = [transcriber]"), "transcriber only")
 }
 
+// Microphone stalls (Oct 7): AVAudioEngine silently stops delivering audio
+// when the mic changes format under it, still reporting "running". The app
+// listened to nothing for 4+ minutes after the 0.1.45 relaunch and after a
+// wake, and several times mid-session, until the mic was turned off and on.
+do {
+    // Format changes that need a fresh capture.
+    let f48 = DeviceFormat(sampleRate: 48000, inputChannels: 2, alive: true)
+    expect(!CaptureHealth.formatChanged(started: f48, now: f48), "same format: keep capturing")
+    expect(CaptureHealth.formatChanged(started: f48, now: DeviceFormat(sampleRate: 44100, inputChannels: 2, alive: true)), "48 -> 44.1 kHz (the reproduced stall): rebuild")
+    expect(CaptureHealth.formatChanged(started: f48, now: DeviceFormat(sampleRate: 16000, inputChannels: 2, alive: true)), "a call switching the headset to 16 kHz: rebuild")
+    expect(CaptureHealth.formatChanged(started: f48, now: DeviceFormat(sampleRate: 48000, inputChannels: 1, alive: true)), "channel count changed: rebuild")
+    expect(CaptureHealth.formatChanged(started: f48, now: DeviceFormat(sampleRate: 48000, inputChannels: 2, alive: false)), "device gone: rebuild")
+
+    typealias W = CaptureWatchdog
+    // Healthy audio never restarts: 8 hours of buffers every 0.1 s with jitter,
+    // checked once a second.
+    do {
+        var w = W()
+        var restarts = 0
+        var lastBuffer = 0.0
+        var t = 0.0
+        var seed: UInt64 = 42
+        while t < 8 * 3600 {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            let jitter = Double(seed >> 40) / Double(1 << 24) * 0.25   // up to 0.25 s late
+            lastBuffer = t - jitter
+            if case .restart = w.check(now: t, captureStartedAt: 0, lastBufferAt: lastBuffer) { restarts += 1 }
+            t += 1
+        }
+        expect(restarts == 0, "8 hours of normal audio (silence included): no restarts (got \(restarts))")
+    }
+    // A capture that never delivers audio (relaunch / wake stall).
+    do {
+        var w = W()
+        expect(w.check(now: 1, captureStartedAt: 0, lastBufferAt: nil) == .ok, "grace period after start")
+        expect(w.check(now: 2.9, captureStartedAt: 0, lastBufferAt: nil) == .ok, "still in grace")
+        expect(w.check(now: 3, captureStartedAt: 0, lastBufferAt: nil) == .restart(silentFor: 3), "no audio 3 s after start: restart")
+        // The restarted capture works.
+        expect(w.check(now: 4, captureStartedAt: 3.1, lastBufferAt: nil) == .ok, "new capture gets its own grace")
+        expect(w.check(now: 7, captureStartedAt: 3.1, lastBufferAt: 6.9) == .ok, "audio flowing again")
+        expect(w.check(now: 600, captureStartedAt: 3.1, lastBufferAt: 599.9) == .ok, "and stays fine")
+    }
+    // A mid-session stall.
+    do {
+        var w = W()
+        expect(w.check(now: 100, captureStartedAt: 0, lastBufferAt: 99.9) == .ok, "healthy")
+        expect(w.check(now: 101, captureStartedAt: 0, lastBufferAt: 99.9) == .ok, "1.1 s quiet gap is not a stall")
+        var restarted = false
+        if case .restart = w.check(now: 102, captureStartedAt: 0, lastBufferAt: 99.9) { restarted = true }
+        expect(restarted, "2 s without audio mid-session: restart")
+    }
+    // Rate limit and giving up when restarts don't help.
+    do {
+        var w = W()
+        expect(w.check(now: 3, captureStartedAt: 0, lastBufferAt: nil) == .restart(silentFor: 3), "restart 1")
+        expect(w.check(now: 6.5, captureStartedAt: 3, lastBufferAt: nil) == .ok, "no second restart within 10 s")
+        expect(w.check(now: 13, captureStartedAt: 3, lastBufferAt: nil) == .restart(silentFor: 10), "restart 2 after 10 s")
+        expect(w.check(now: 23, captureStartedAt: 13, lastBufferAt: nil) == .restart(silentFor: 10), "restart 3")
+        expect(w.check(now: 33, captureStartedAt: 23, lastBufferAt: nil) == .giveUp, "3 restarts without audio: give up and tell the user")
+        expect(w.check(now: 60, captureStartedAt: 23, lastBufferAt: nil) == .ok, "no restart loop after giving up")
+    }
+    // A restart that brings audio back resets the count.
+    do {
+        var w = W()
+        _ = w.check(now: 3, captureStartedAt: 0, lastBufferAt: nil)
+        _ = w.check(now: 13, captureStartedAt: 3, lastBufferAt: nil)
+        expect(w.check(now: 20, captureStartedAt: 13, lastBufferAt: 19.9) == .ok, "audio back")
+        // A new stall later: three fresh restarts before giving up (the two
+        // earlier ones were cleared when audio came back).
+        var decisions: [W.Decision] = []
+        var started = 13.0
+        for t in stride(from: 100.0, through: 130.0, by: 10) {
+            let d = w.check(now: t, captureStartedAt: started, lastBufferAt: 97)
+            decisions.append(d)
+            if case .restart = d { started = t }
+        }
+        let restartsLater = decisions.filter { if case .restart = $0 { return true } else { return false } }.count
+        expect(restartsLater == 3 && decisions.last == .giveUp, "a new stall later gets 3 fresh restarts (got \(decisions))")
+    }
+    // Not capturing (mic off, between hold-to-talk presses): nothing to check.
+    do {
+        var w = W()
+        expect(w.check(now: 100, captureStartedAt: nil, lastBufferAt: nil) == .ok, "capture off: no restart")
+    }
+    // Wiring.
+    let capture = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/AudioCapture.swift"), encoding: .utf8)
+    expect(capture.contains("kAudioDevicePropertyNominalSampleRate") && capture.contains("AudioObjectAddPropertyListenerBlock(id"), "capture listens for the mic's sample rate changing")
+    expect(capture.contains("AudioObjectRemovePropertyListenerBlock(id"), "listeners removed when capture stops")
+    expect(capture.contains(".AVAudioEngineConfigurationChange"), "engine stopping itself is caught too")
+    let engineSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
+    expect(engineSource.contains("public func restartCapture(reason: String)"), "capture can be rebuilt in place")
+    let session = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/ListeningSession.swift"), encoding: .utf8)
+    expect(session.contains("engine.onCaptureInterrupted") && session.contains("captureInterrupted(reason)"), "format change rebuilds capture")
+    expect(session.contains("checkCaptureHealth()") && session.contains("watchdog.check("), "watchdog checks once a second")
+    expect(session.contains("while let inFlight = startInFlight"), "two starts at once (wake) share one start")
+    expect(session.contains("beginActivity(") && session.contains("endActivity("), "no App Nap while listening, so the watchdog runs on time")
+}
+
 print("CheckLogic passed")

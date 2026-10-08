@@ -26,6 +26,8 @@ Slack, Cursor, VS Code, OpenCode, Chrome, Safari pages and any Electron/Chromium
 
 The DictationTranscriber runs without `.punctuation` (`Recognition/TranscriberOptions.swift`): no marks guessed from pauses; spoken "period" / "comma" / "question mark" / "exclamation point" still convert. It is not a setting: the typing logic assumes every mark was spoken, so turning Apple's guesses back on would bring back doubled and stray marks. Check real-model behavior with `./scripts/probe-punctuation.sh` (speaks samples with `say`, transcribes each with it on and off via `swift run ProbeSpeech`).
 
+Microphone stalls: AVAudioEngine silently stops delivering audio when the mic changes format under it (still "running", no notification). `AudioCapture` rebuilds on a device format change, and `CaptureWatchdog` (`Recognition/CaptureHealth.swift`) rebuilds after 2 s with no audio (rate-limited, gives up after 3 tries). Verify on hardware with `CUSTOM_DICTATION_CONFIG=$(mktemp -d) swift run ProbeCaptureRecovery`: it flips the built-in mic between 48 and 44.1 kHz and checks both paths recover (not part of check.sh, since it changes a device setting).
+
 Because every mark is spoken, the app types every mark it gets. Removed in 0.1.40 because they only existed to undo Apple's guesses: dropping repeated boundary punctuation, the lone-punctuation pause setting, and stripping a trailing ". ? ..." when inserting mid-sentence. Kept: lowering Apple's segment-start capital mid-sentence (Apple still capitalizes each segment).
 
 ## Post-process is built in

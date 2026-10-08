@@ -46,7 +46,7 @@ public final class MicrophoneWatcher {
     }
 }
 
-public final class AudioCapture {
+public final class AudioCapture: @unchecked Sendable {
     public let deviceUID: String?
     private let outputFormat: AVAudioFormat
     private let onBuffer: @Sendable (AVAudioPCMBuffer, CMTime) -> Void
@@ -54,6 +54,29 @@ public final class AudioCapture {
     private var converter: AVAudioConverter?
     private var framePosition: Int64 = 0
     private let timeBase: CMTime
+    private let healthLock = NSLock()
+    private var lastBuffer: Double?
+    /// Monotonic time capture started (ProcessInfo.systemUptime).
+    public private(set) var startedUptime: Double = 0
+    /// Monotonic time of the last buffer handed on; nil before the first.
+    public var lastBufferUptime: Double? { healthLock.withLock { lastBuffer } }
+    /// Called once when the microphone changes format under the running
+    /// engine or the engine stops itself (see CaptureHealth).
+    public var onInterrupted: (@Sendable (String) -> Void)?
+    /// Test hook: ProbeCaptureRecovery turns the device listeners off to
+    /// prove the watchdog recovers on its own.
+    nonisolated(unsafe) public static var deviceListenersEnabled = true
+    private var watchedDevice: AudioDeviceID?
+    private var startFormat: DeviceFormat?
+    private var deviceListener: AudioObjectPropertyListenerBlock?
+    private var engineObserver: NSObjectProtocol?
+    private var interrupted = false
+    private let listenerQueue = DispatchQueue(label: "com.jackaldenryan.custom-mac-dictation.capture-device")
+    private static let watchedSelectors: [(AudioObjectPropertySelector, AudioObjectPropertyScope)] = [
+        (kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal),
+        (kAudioDevicePropertyStreamConfiguration, kAudioObjectPropertyScopeInput),
+        (kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal),
+    ]
 
     public init(
         deviceUID: String?,
@@ -98,11 +121,15 @@ public final class AudioCapture {
         }
 
         framePosition = 0
+        startedUptime = ProcessInfo.processInfo.systemUptime
+        healthLock.withLock { lastBuffer = nil }
         let tapFormat = inputFormat
         input.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
             guard let self else { return }
             let usable = self.convert(buffer) ?? (self.converter == nil ? buffer : nil)
             guard let usable, usable.frameLength > 0 else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            self.healthLock.withLock { self.lastBuffer = now }
             let start = CMTimeAdd(
                 self.timeBase,
                 CMTime(value: self.framePosition, timescale: CMTimeScale(self.outputFormat.sampleRate))
@@ -110,9 +137,112 @@ public final class AudioCapture {
             self.framePosition += Int64(usable.frameLength)
             self.onBuffer(usable, start)
         }
+        watchDevice()
+    }
+
+    /// Rebuild-worthy changes: the device's sample rate or input channels
+    /// change, the device goes away, or the engine stops itself.
+    private func watchDevice() {
+        guard Self.deviceListenersEnabled else { return }
+        let id = deviceUID.flatMap(Self.deviceID(for:)) ?? Self.defaultInputDeviceID()
+        if let id {
+            watchedDevice = id
+            startFormat = Self.deviceFormat(id)
+            let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                guard let self, let id = self.watchedDevice, let started = self.startFormat else { return }
+                let now = Self.deviceFormat(id)
+                if CaptureHealth.formatChanged(started: started, now: now) {
+                    self.interrupt("mic format changed: \(Int(started.sampleRate)) Hz \(started.inputChannels) ch -> \(Int(now.sampleRate)) Hz \(now.inputChannels) ch\(now.alive ? "" : ", device gone")")
+                }
+            }
+            deviceListener = block
+            for (selector, scope) in Self.watchedSelectors {
+                var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+                AudioObjectAddPropertyListenerBlock(id, &address, listenerQueue, block)
+            }
+        }
+        engineObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self, !self.engine.isRunning else { return }
+            self.interrupt("audio engine stopped after a configuration change")
+        }
+    }
+
+    private func interrupt(_ reason: String) {
+        let first = healthLock.withLock { () -> Bool in
+            if interrupted { return false }
+            interrupted = true
+            return true
+        }
+        if first { onInterrupted?(reason) }
+    }
+
+    private func unwatchDevice() {
+        if let id = watchedDevice, let block = deviceListener {
+            for (selector, scope) in Self.watchedSelectors {
+                var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+                AudioObjectRemovePropertyListenerBlock(id, &address, listenerQueue, block)
+            }
+        }
+        watchedDevice = nil
+        deviceListener = nil
+        if let observer = engineObserver { NotificationCenter.default.removeObserver(observer) }
+        engineObserver = nil
+    }
+
+    static func deviceFormat(_ id: AudioDeviceID) -> DeviceFormat {
+        var rateAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var rate: Double = 0
+        var rateSize = UInt32(MemoryLayout<Double>.size)
+        AudioObjectGetPropertyData(id, &rateAddress, 0, nil, &rateSize, &rate)
+        var aliveAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsAlive,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var alive: UInt32 = 0
+        var aliveSize = UInt32(MemoryLayout<UInt32>.size)
+        let aliveStatus = AudioObjectGetPropertyData(id, &aliveAddress, 0, nil, &aliveSize, &alive)
+        return DeviceFormat(sampleRate: rate, inputChannels: inputChannelCount(id), alive: aliveStatus == noErr && alive != 0)
+    }
+
+    private static func inputChannelCount(_ id: AudioDeviceID) -> Int {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr, size > 0 else { return 0 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, raw) == noErr else { return 0 }
+        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+
+    private static func defaultInputDeviceID() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr,
+              id != 0 else { return nil }
+        return id
     }
 
     public func stop() {
+        unwatchDevice()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         converter = nil

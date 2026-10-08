@@ -46,6 +46,11 @@ let package = Package(
             name: "ProbeSpeech",
             dependencies: ["CustomDictationKit"],
             path: "Sources/ProbeSpeech"
+        ),
+        .executableTarget(
+            name: "ProbeCaptureRecovery",
+            dependencies: ["CustomDictationKit"],
+            path: "Sources/ProbeCaptureRecovery"
         )
     ]
 )

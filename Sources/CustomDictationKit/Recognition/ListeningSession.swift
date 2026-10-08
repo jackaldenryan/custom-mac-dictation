@@ -46,6 +46,15 @@ public final class ListeningSession: ObservableObject {
     /// False when hold-to-talk is on but the keyboard can't be watched.
     @Published public private(set) var holdKeyWatching = false
 
+    /// Microphone stall recovery (see CaptureHealth).
+    private var watchdog = CaptureWatchdog()
+    private var healthTask: Task<Void, Never>?
+    private var interruptTask: Task<Void, Never>?
+    /// The start in progress; a second start request joins it instead of
+    /// building a second capture (wake fired two starts at once, Oct 7).
+    private var startInFlight: Task<Void, Never>?
+    private var listeningActivity: NSObjectProtocol?
+
     public init(store: SettingsStore = .shared) {
         self.store = store
         engine.onFinalTranscript = { [weak self] text in
@@ -67,6 +76,17 @@ public final class ListeningSession: ObservableObject {
         micWatcher = MicrophoneWatcher { [weak self] in
             self?.microphonesChanged()
         }
+        engine.onCaptureInterrupted = { [weak self] reason in
+            Task { @MainActor in
+                self?.captureInterrupted(reason)
+            }
+        }
+        healthTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                self?.checkCaptureHealth()
+            }
+        }
         engine.onError = { [weak self] error in
             Task { @MainActor in
                 DiagnosticLog.line("Session error: \(error.localizedDescription)")
@@ -77,12 +97,36 @@ public final class ListeningSession: ObservableObject {
         }
     }
 
+    /// Audio buffers received and captures started (ProbeCaptureRecovery).
+    public var audioBufferCount: Int { engine.audioBufferCount }
+    public var captureStartCount: Int { engine.captureStartCount }
+
     public func ensureAssets() async throws {
         try await engine.ensureAssets()
     }
 
     public func startListening(persist: Bool = true) async {
+        var joined = false
+        while let inFlight = startInFlight {
+            joined = true
+            await inFlight.value
+        }
+        if joined, state == .listening, engine.isRunning {
+            DiagnosticLog.line("Start listening requested while starting; joined that start")
+            if persist { setState(.listening, persist: true) }
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            await self?.performStart(persist: persist)
+            self?.startInFlight = nil
+        }
+        startInFlight = task
+        await task.value
+    }
+
+    private func performStart(persist: Bool) async {
         startGeneration += 1
+        watchdog = CaptureWatchdog()
         let generation = startGeneration
         lastError = ""
         DiagnosticLog.line("Start listening requested")
@@ -109,6 +153,51 @@ public final class ListeningSession: ObservableObject {
             lastError = error.localizedDescription
             onErrorMessage?(error.localizedDescription)
             setState(.off, persist: false)
+        }
+    }
+
+    // MARK: Microphone stall recovery
+
+    /// Once a second: if capture is running but no audio has arrived for a
+    /// while, rebuild the capture (what turning the mic off and on did).
+    private func checkCaptureHealth() {
+        guard state != .off, let timing = engine.captureTiming else { return }
+        let decision = watchdog.check(
+            now: ProcessInfo.processInfo.systemUptime,
+            captureStartedAt: timing.startedAt,
+            lastBufferAt: timing.lastBufferAt
+        )
+        switch decision {
+        case .ok:
+            return
+        case .restart(let silent):
+            restartCapture(reason: "no audio for \(String(format: "%.1f", silent)) s")
+        case .giveUp:
+            let message = "The microphone stopped sending audio. Turn the mic off and on."
+            DiagnosticLog.line("Audio still stalled after \(CaptureWatchdog.maxRestartsWithoutAudio) restarts; giving up")
+            lastError = message
+            onErrorMessage?(message)
+        }
+    }
+
+    /// The mic changed format under the running capture: rebuild it once
+    /// the burst of CoreAudio notifications settles.
+    private func captureInterrupted(_ reason: String) {
+        interruptTask?.cancel()
+        interruptTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, let self, self.state != .off, self.engine.isRunning else { return }
+            self.restartCapture(reason: reason)
+        }
+    }
+
+    private func restartCapture(reason: String) {
+        do {
+            try engine.restartCapture(reason: reason)
+        } catch {
+            DiagnosticLog.line("Capture restart failed: \(error.localizedDescription)")
+            lastError = error.localizedDescription
+            onErrorMessage?(error.localizedDescription)
         }
     }
 
@@ -440,6 +529,17 @@ public final class ListeningSession: ObservableObject {
 
     private func setState(_ newState: ListeningState, persist: Bool) {
         state = newState
+        // While the mic is on, keep timers on time: App Nap delayed the
+        // stall watchdog from ~2.5 s to ~5 s in testing (Oct 7).
+        if newState == .off {
+            if let activity = listeningActivity { ProcessInfo.processInfo.endActivity(activity) }
+            listeningActivity = nil
+        } else if listeningActivity == nil {
+            listeningActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep],
+                reason: "Listening for dictation"
+            )
+        }
         if persist {
             _ = store.update { $0.preferredListeningState = newState }
         }

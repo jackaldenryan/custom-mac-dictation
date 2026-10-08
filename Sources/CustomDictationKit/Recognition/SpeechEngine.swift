@@ -26,6 +26,16 @@ public final class SpeechEngine: @unchecked Sendable {
     public var finalizeDelaySeconds = AppSettings.defaultFinalizeDelaySeconds
     public var disableForcedFinalize = false
     public var isRunning: Bool { capture != nil }
+    /// The microphone changed format under capture (see CaptureHealth).
+    public var onCaptureInterrupted: (@Sendable (String) -> Void)?
+    /// Captures started since launch (tests check a start is not doubled).
+    public private(set) var captureStartCount = 0
+    public var audioBufferCount: Int { bufferCount }
+    /// When the running capture started and last delivered audio
+    /// (monotonic seconds); nil when not capturing.
+    public var captureTiming: (startedAt: Double, lastBufferAt: Double?)? {
+        capture.map { ($0.startedUptime, $0.lastBufferUptime) }
+    }
 
     public init() {}
 
@@ -176,6 +186,15 @@ public final class SpeechEngine: @unchecked Sendable {
         DiagnosticLog.line("Capture paused after \(bufferCount) buffers")
     }
 
+    /// Rebuilds the microphone capture on the same mic (a fresh AVAudioEngine
+    /// reads the device's current format). Same as turning the mic off and on.
+    public func restartCapture(reason: String) throws {
+        guard analyzer != nil, capture != nil else { return }
+        DiagnosticLog.line("Restarting capture: \(reason)")
+        pauseCapture()
+        try startCapture(microphoneUID: lastMicrophoneUID)
+    }
+
     /// Moves capture to another microphone without rebuilding the analyzer
     /// (the capture converts any mic to the analyzer's format).
     public func switchMicrophone(to microphoneUID: String?) throws {
@@ -211,6 +230,10 @@ public final class SpeechEngine: @unchecked Sendable {
             }
             continuation.yield(AnalyzerInput(buffer: buffer, bufferStartTime: startTime))
         }
+        capture.onInterrupted = { [weak self] reason in
+            self?.onCaptureInterrupted?(reason)
+        }
+        captureStartCount += 1
         try capture.start()
         self.capture = capture
     }
