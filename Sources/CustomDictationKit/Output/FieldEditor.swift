@@ -4,6 +4,30 @@ import CoreGraphics
 import Foundation
 
 public enum FieldEditor {
+    private struct AXFocusIdentity: Hashable {
+        let element: AXUIElement
+        static func == (lhs: Self, rhs: Self) -> Bool { CFEqual(lhs.element, rhs.element) }
+        func hash(into hasher: inout Hasher) { hasher.combine(CFHash(element)) }
+    }
+
+    private static func identity(_ el: AXUIElement, pid: pid_t) -> DictationTarget {
+        DictationTarget(processID: pid, elementID: AXFocusIdentity(element: el))
+    }
+
+    /// One coherent focus read; never trust an AX element owned by the app
+    /// that was frontmost before a focus transition.
+    public static func dictationTarget() -> DictationTarget? {
+        guard AXIsProcessTrusted(), let el = focusedElement(),
+              let front = NSWorkspace.shared.frontmostApplication,
+              let owner = owningApp(el), owner.processIdentifier == front.processIdentifier,
+              !isStub(el) else { return nil }
+        let assessment = assessFocus(el, app: owner)
+        guard assessment.allowed else {
+            DiagnosticLog.line("Dictation skipped; focus in \(assessment.app) is \(assessment.role), not editable text")
+            return nil
+        }
+        return identity(el, pid: owner.processIdentifier)
+    }
     private struct LiveMark {
         var element: AXUIElement
         var start: Int
@@ -20,7 +44,7 @@ public enum FieldEditor {
     }
 
     public static func finishLive() {
-        if let mark = live, let range = selectedRange(mark.element), range.location == mark.start {
+        if let mark = live, isLive(mark), let range = selectedRange(mark.element), range.location == mark.start {
             var caret = CFRange(location: mark.start + max(0, range.length), length: 0)
             if let value = AXValueCreate(.cfRange, &caret) {
                 AXUIElementSetAttributeValue(mark.element, kAXSelectedTextRangeAttribute as CFString, value)
@@ -29,20 +53,20 @@ public enum FieldEditor {
         live = nil
     }
 
-    public static func replaceLive(with text: String, select: Bool) -> Bool {
-        guard AXIsProcessTrusted() else { return false }
+    public static func replaceLive(with text: String, select: Bool, target expected: DictationTarget) -> Bool {
+        guard dictationTarget() == expected else { return false }
         if let mark = live, isLive(mark) {
             return write(mark.element, location: mark.start, length: currentLiveLength(mark), text: text, select: select)
         }
-        guard let target = usableFocusedTextElement() else { return false }
+        guard let target = usableFocusedTextElement(expected: expected) else { return false }
         let range = selectedRange(target) ?? CFRange(location: valueLength(target), length: 0)
         live = LiveMark(element: target, start: range.location)
         return write(target, location: range.location, length: range.length, text: text, select: select)
     }
 
-    public static func insert(_ text: String) -> Bool {
-        guard AXIsProcessTrusted(), !text.isEmpty else { return false }
-        guard let target = usableFocusedTextElement() else { return false }
+    public static func insert(_ text: String, target expected: DictationTarget) -> Bool {
+        guard !text.isEmpty, dictationTarget() == expected else { return false }
+        guard let target = usableFocusedTextElement(expected: expected) else { return false }
         let range = selectedRange(target) ?? CFRange(location: valueLength(target), length: 0)
         return write(target, location: range.location, length: range.length, text: text, select: false)
     }
@@ -115,6 +139,10 @@ public enum FieldEditor {
     public static func focusedTakesKeystrokes() -> (allowed: Bool, role: String, app: String) {
         let el = focusedElement()
         let app = el.flatMap(owningApp) ?? NSWorkspace.shared.frontmostApplication
+        return assessFocus(el, app: app)
+    }
+
+    private static func assessFocus(_ el: AXUIElement?, app: NSRunningApplication?) -> (allowed: Bool, role: String, app: String) {
         let appName = app?.localizedName ?? "unknown"
         let swallows = KeystrokePolicy.swallowsUnhandledKeys(
             frameworkNames: frameworkNames(app),
@@ -137,11 +165,16 @@ public enum FieldEditor {
             ? (caret as? NSNumber)?.intValue : nil
         let hasCaret = KeystrokePolicy.isCaret(lineNumber: caretLine)
         var editableAncestor: CFTypeRef?
+        // Checkboxes/sliders also have settable AXValue, but it is not text.
         let valueSettable = isSettable(el, kAXValueAttribute as CFString)
+            && stringValue(el, kAXValueAttribute as CFString) != nil
         let selectedTextSettable = isSettable(el, kAXSelectedTextAttribute as CFString)
         let hasEditableAncestor = AXUIElementCopyAttributeValue(el, "AXEditableAncestor" as CFString, &editableAncestor) == .success
-            && editableAncestor != nil
+            && editableAncestor.map { CFGetTypeID($0) == AXUIElementGetTypeID() } == true
         let editable = valueSettable || selectedTextSettable || hasEditableAncestor
+        var enabledValue: CFTypeRef?
+        let isEnabled = AXUIElementCopyAttributeValue(el, kAXEnabledAttribute as CFString, &enabledValue) != .success
+            || (enabledValue as? NSNumber)?.boolValue != false
         let range = selectedRange(el)
         let allowed = KeystrokePolicy.allowsTyping(
             swallowsUnhandledKeys: swallows,
@@ -149,7 +182,8 @@ public enum FieldEditor {
             focusedRole: role,
             hasTextSelectionRange: range != nil,
             hasInsertionPoint: hasCaret,
-            isEditable: editable
+            isEditable: editable,
+            isEnabled: isEnabled
         )
         // Which signals the decision saw, for the log (Oct 7: a GitHub file
         // row in Chrome still got typing).
@@ -157,7 +191,7 @@ public enum FieldEditor {
         let kind = browser ? "browser" : (swallows ? "electron" : "native")
         let caretText = caretLine.map { $0 == NSNotFound ? "NSNotFound" : "\($0)" } ?? "none"
         let rangeText = range.map { "\($0.location)+\($0.length)" } ?? "none"
-        let detail = "\(role) [\(kind)\(subrole) caret=\(caretText) range=\(rangeText) valueSettable=\(valueSettable) selectedTextSettable=\(selectedTextSettable) editableAncestor=\(hasEditableAncestor)]"
+        let detail = "\(role) [\(kind)\(subrole) caret=\(caretText) range=\(rangeText) valueSettable=\(valueSettable) selectedTextSettable=\(selectedTextSettable) editableAncestor=\(hasEditableAncestor) enabled=\(isEnabled)]"
         return (allowed, detail, appName)
     }
 
@@ -186,8 +220,11 @@ public enum FieldEditor {
         return nil
     }
 
-    private static func usableFocusedTextElement() -> AXUIElement? {
-        guard let el = focusedElement() else { return nil }
+    private static func usableFocusedTextElement(expected: DictationTarget) -> AXUIElement? {
+        guard let el = focusedElement(), let owner = owningApp(el),
+              identity(el, pid: owner.processIdentifier) == expected,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == expected.processID
+        else { return nil }
         if isStub(el) {
             DiagnosticLog.line("Focused AX element is a stub; skip field insert")
             return nil

@@ -704,7 +704,11 @@ print("field scenarios: \(all.count)")
 show("desired (spec)", desired)
 show("local          ", local)
 show("release v0.1.37", release)
-if desired.pass != all.count {
-    fputs("spec engine failed its own tests\n", stderr)
+if desired.pass != all.count || local.pass != all.count {
+    fputs("spec or current engine failed field scenarios\n", stderr)
     exit(1)
 }
+
+runFocusSafetyChecks()
+
+runLiveFocusChecks()

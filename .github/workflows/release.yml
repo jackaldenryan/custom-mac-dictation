@@ -19,6 +19,9 @@ jobs:
           swift --version
           xcrun --show-sdk-version
 
+      - name: Check logic, phrase rules, and focus safety
+        run: ./scripts/check.sh
+
       - name: Import signing certificate
         env:
           CODESIGN_P12: ${{ secrets.CODESIGN_P12 }}

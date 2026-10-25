@@ -4,41 +4,27 @@ import CoreGraphics
 import Foundation
 
 public enum Typist {
-    /// - checkFocus: skip keystrokes when the focus takes no text (they would
-    ///   beep, see KeystrokePolicy). LivePhrase checks once per phrase itself.
-    public static func typeText(_ text: String, preferAX: Bool = true, checkFocus: Bool = true) {
-        guard !text.isEmpty else { return }
-        if !AXIsProcessTrusted() {
-            DiagnosticLog.line("Type skipped; Accessibility not granted")
-            return
-        }
-        if FieldEditor.focusedLooksLikeStub() {
-            DiagnosticLog.line("Type skipped; focused field is a stub")
-            return
-        }
-        if preferAX, FieldEditor.insert(text) {
-            DiagnosticLog.line("AX inserted \(text.utf16.count) utf16 into \(frontAppName())")
-            return
-        }
-        if checkFocus {
-            let target = FieldEditor.focusedTakesKeystrokes()
-            guard target.allowed else {
-                DiagnosticLog.line("Type skipped; focus in \(target.app) is \(target.role), not a text field (keys would beep or trigger shortcuts)")
-                return
-            }
-        }
-        let units = Array(text.utf16)
-        let chunkSize = 20
-        var index = 0
-        var posted = 0
-        while index < units.count {
-            let end = min(index + chunkSize, units.count)
-            var chunk = Array(units[index..<end])
-            postUnicode(&chunk)
-            posted += chunk.count
-            index = end
-        }
-        DiagnosticLog.line("Typed \(posted) utf16 into \(frontAppName())")
+    /// Literal text always requires a verified destination, including
+    /// paste-text commands. There is deliberately no checkFocus bypass.
+    @discardableResult
+    public static func typeText(_ text: String, preferAX: Bool = true) -> Bool {
+        guard !text.isEmpty else { return true }
+        guard let target = FieldEditor.dictationTarget() else { return false }
+        if preferAX, FieldEditor.insert(text, target: target) { return true }
+        return typeText(text, target: target)
+    }
+
+    @discardableResult
+    public static func typeText(_ text: String, target: DictationTarget) -> Bool {
+        dictationKeys.write(text, target: target)
+    }
+
+    public static func deleteDictationBackward(times: Int, target: DictationTarget) -> Bool {
+        dictationKeys.deleteBackward(times, target: target)
+    }
+
+    private static var dictationKeys: DictationKeyWriter {
+        DictationKeyWriter(currentTarget: { FieldEditor.dictationTarget() }, post: postDictationEvent)
     }
 
     public static func press(
@@ -252,15 +238,22 @@ public enum Typist {
         DiagnosticLog.line("Cleared unintended caps lock")
     }
 
-    private static func postUnicode(_ buffer: inout [UniChar]) {
+    private static func postDictationEvent(_ event: DictationKeyEvent, pid: Int32) {
         let source = CGEventSource(stateID: .privateState)
         source?.localEventsSuppressionInterval = 0
-        let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-        down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
-        up?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        let code: CGKeyCode = event == .backspace ? 51 : 0
+        let down = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: false)
+        down?.flags = []
+        up?.flags = []
+        if case .text(var buffer) = event {
+            down?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
+            up?.keyboardSetUnicodeString(stringLength: buffer.count, unicodeString: &buffer)
+        }
+        // Address the verified app, so an app switch between validation
+        // and delivery cannot redirect these keys into Zoom/Finder.
+        down?.postToPid(pid)
+        up?.postToPid(pid)
     }
 
     private static func frontAppName() -> String {

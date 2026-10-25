@@ -8,6 +8,9 @@ public enum LivePhrase {
     /// the focused app, so CheckLogic can drive the real LivePhrase and
     /// Router with no AX or keystrokes. Always nil in the app.
     nonisolated(unsafe) public static var simulatedField: SimulatedField?
+    nonisolated(unsafe) public static var output: any DictationOutput = SystemDictationOutput()
+    nonisolated(unsafe) private static var phraseTarget: DictationTarget?
+    nonisolated(unsafe) private static var cancelledForFocus = false
     nonisolated(unsafe) private static var phraseIsMidSentence = false
     nonisolated(unsafe) private static var phraseSnapshot: CaretSnapshot?
     nonisolated(unsafe) private static var lastInsertPath = LiveInsertPath.skipped
@@ -32,15 +35,13 @@ public enum LivePhrase {
         finishCommittedMark()
         if !displayed.isEmpty { pendingLeadSpace = true }
         rememberTail(displayed)
-        displayed = ""
-        phrasePath = nil
+        resetPhrase()
     }
 
     public static func discard() {
         apply("", keepSelected: false)
-        displayed = ""
-        phrasePath = nil
-        FieldEditor.clearLive()
+        resetPhrase()
+        output.clearLive()
     }
 
     public static func noteCommand() {
@@ -50,12 +51,10 @@ public enum LivePhrase {
     }
 
     public static func keepAndUnhighlight() {
-        guard !displayed.isEmpty else { return }
         finishCommittedMark()
-        pendingLeadSpace = true
+        if !displayed.isEmpty { pendingLeadSpace = true }
         rememberTail(displayed)
-        displayed = ""
-        phrasePath = nil
+        resetPhrase()
     }
 
     private static func rememberTail(_ typed: String) {
@@ -74,7 +73,7 @@ public enum LivePhrase {
 
     private static func frontAppID() -> String {
         if let field = simulatedField { return "simulated:\(field.box.rawValue)" }
-        return NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        return output.frontAppID
     }
 
     private static func finishCommittedMark() {
@@ -85,15 +84,21 @@ public enum LivePhrase {
             field.liveVisible = false
             return
         }
-        if LiveCommitPolicy.shouldFinishAXMark(lastInsertPath) {
-            FieldEditor.finishLive()
+        if let target = phraseTarget {
+            guard output.target() == target else {
+                abandonForFocusChange()
+                return
+            }
+            if LiveCommitPolicy.shouldFinishAXMark(lastInsertPath) {
+                output.finishLive(target: target)
+            }
         }
     }
 
     private static func shaped(_ spoken: String) -> String {
         let text = EmojiPhrases.replace(spoken)
         if displayed.isEmpty {
-            phraseSnapshot = InsertionContext.snapshot()
+            phraseSnapshot = simulatedField == nil ? output.snapshot() : InsertionContext.snapshot()
             if let app = lastTypedApp, app != frontAppID() {
                 // New app, new field: nothing we typed sits before this
                 // caret, so no lead space.
@@ -117,8 +122,8 @@ public enum LivePhrase {
     }
 
     private static func apply(_ text: String, keepSelected: Bool) {
-        if displayed == text { return }
         if let field = simulatedField {
+            if displayed == text { return }
             field.apply(shaped: text, keepSelected: keepSelected)
             if !(keepSelected && !text.isEmpty) { field.finishIfNeeded() }
             lastInsertPath = field.lastPath
@@ -128,86 +133,86 @@ public enum LivePhrase {
         applyAXHid(text, keepSelected: keepSelected)
     }
 
+    private static func resetPhrase() {
+        displayed = ""
+        phrasePath = nil
+        phraseTarget = nil
+        cancelledForFocus = false
+        lastInsertPath = .skipped
+    }
+
+    /// Never erase the old phrase after focus moves: that would send delete
+    /// keys to a different control. Ignore the rest of this recognition
+    /// phrase, even if focus returns, until commit/discard ends it.
+    private static func abandonForFocusChange() {
+        DiagnosticLog.line("Dictation phrase stopped: text destination changed or became unavailable")
+        cancelledForFocus = true
+        displayed = ""
+        phrasePath = nil
+        lastInsertPath = .skipped
+        pendingLeadSpace = false
+        lastTypedTail = nil
+        lastTypedApp = nil
+        output.clearLive()
+    }
+
     private static func applyAXHid(_ text: String, keepSelected: Bool) {
-        if FieldEditor.focusedLooksLikeStub() {
-            DiagnosticLog.line("Live phrase skipped; focused field is a stub")
-            lastInsertPath = .skipped
-            displayed = ""
+        guard !cancelledForFocus else { return }
+        let current = output.target()
+        if let previous = phraseTarget, current != previous {
+            abandonForFocusChange()
             return
         }
+        guard let target = current else {
+            lastInsertPath = .skipped
+            return
+        }
+        // Validate even identical partials/finals, before the no-op shortcut.
+        if displayed == text { return }
+        phraseTarget = target
         if displayed.isEmpty { phrasePath = nil }
         if PhrasePathLock.mayTryAX(phrasePath: phrasePath) {
-            if FieldEditor.replaceLive(with: text, select: keepSelected && !text.isEmpty) {
+            if output.replaceLive(text, select: keepSelected && !text.isEmpty, target: target) {
                 lastInsertPath = .ax
                 phrasePath = .ax
                 displayed = text
                 return
             }
+            // AX may have failed because the user switched focus during
+            // the call. Do not interpret that as permission for HID fallback.
+            guard output.target() == target else {
+                abandonForFocusChange()
+                return
+            }
             if phrasePath == .ax, !displayed.isEmpty {
-                // A native field stopped taking AX writes mid-phrase. The
-                // failed write restored the selection, so our live text is
-                // still selected: typing replaces exactly that, then this
-                // phrase continues with HID at the caret it leaves.
-                DiagnosticLog.line("AX live write failed mid-phrase; finishing phrase with keystrokes")
-                if text.isEmpty {
-                    Typist.deleteSelection()
-                } else {
-                    Typist.typeText(text, preferAX: false, checkFocus: false)
-                }
-                Typist.releaseModifiers()
+                let wrote = text.isEmpty
+                    ? output.deleteBackward(1, target: target)
+                    : output.typeText(text, target: target)
+                guard wrote else { abandonForFocusChange(); return }
                 lastInsertPath = .hid
                 phrasePath = .hid
                 displayed = text
                 return
             }
         }
-        guard !displayed.isEmpty || hidFallbackAllowed() else {
-            lastInsertPath = .skipped
-            displayed = ""
+        guard hidReplace(text, target: target) else {
+            abandonForFocusChange()
             return
         }
-        hidReplace(text)
         lastInsertPath = .hid
         phrasePath = .hid
         displayed = text
     }
 
-    /// HID typing must not go where no text can land: native apps beep for
-    /// every keystroke nothing takes (Zoom windows), and Finder or the Notes
-    /// sidebar act on typed letters. KeystrokePolicy decides from AX focus,
-    /// once per phrase (a phrase already typing keeps typing).
-    private static func hidFallbackAllowed() -> Bool {
-        let target = FieldEditor.focusedTakesKeystrokes()
-        if target.allowed {
-            DiagnosticLog.line("Typing into \(target.app) (\(target.role))")
-        } else {
-            DiagnosticLog.line("Live phrase skipped; focus in \(target.app) is \(target.role), not a text field (keys would beep or trigger shortcuts)")
-        }
-        return target.allowed
-    }
-
-    private static func hidReplace(_ text: String) {
+    private static func hidReplace(_ text: String, target: DictationTarget) -> Bool {
         if displayed.isEmpty {
-            // No AX-driven delete of a "selection" first: web engines report
-            // stale or parent-level selections, and a stray backspace eats a
-            // character of earlier text. A real selection is replaced by the
-            // typed text anyway, as with the shipped release.
-            Typist.typeText(text, preferAX: false, checkFocus: false)
-        } else {
-            // Suffix-diff revision: a recognizer correction usually changes
-            // the tail ("reciept" -> "receipt"), so keep the shared prefix
-            // and only delete/retype the differing suffix instead of the
-            // whole phrase. Fewer key events means faster Slack updates and
-            // less flicker.
-            let keep = commonPrefixKeepCount(displayed, text)
-            if keep == displayed.count, text.count >= displayed.count {
-                Typist.typeText(String(text.dropFirst(displayed.count)), preferAX: false, checkFocus: false)
-            } else {
-                Typist.deleteBackward(times: displayed.count - keep)
-                Typist.typeText(String(text.dropFirst(keep)), preferAX: false, checkFocus: false)
-            }
+            return output.typeText(text, target: target)
         }
-        Typist.releaseModifiers()
+        let keep = commonPrefixKeepCount(displayed, text)
+        if keep < displayed.count {
+            guard output.deleteBackward(displayed.count - keep, target: target) else { return false }
+        }
+        return output.typeText(String(text.dropFirst(keep)), target: target)
     }
 
     /// Characters of `displayed` shared with the start of `text`, comparing

@@ -77,38 +77,20 @@ public enum PhrasePathLock {
     }
 }
 
-/// Whether dictated keystrokes may be sent to the focused element.
-///
-/// Why: a native (AppKit) app beeps for every keystroke that nothing takes.
-/// Dictating with a Zoom meeting window in front typed each word as
-/// keystrokes into the meeting view, so every phrase made a string of alert
-/// "boop"s (Oct 3). The Zoom home window kept beeping (Oct 7 log: "Typed 4
-/// utf16 into Zoom" outside meetings) because Zoom ships "ZoomCefHelper"
-/// apps, the old web-engine test matched "cef", and web engines were exempt.
-/// But an embedded web view (CEF, WKWebView) in a native app hands unhandled
-/// keys back to the app, which beeps.
-///
-/// Browsers and Electron apps were exempt (they never beep), so on a GitHub
-/// page with no text box focused, dictated words became page shortcuts:
-/// "test" typed "t", GitHub's file finder (Oct 7 log: "Typing into Google
-/// Chrome (AXWebArea)", "(AXHeading)", "(AXRow)").
-///
-/// Rule: keystrokes go only where something takes text. In a browser that
-/// means a text role or editable web content; a page, heading, row or link
-/// gets nothing. Browser AX focus can lag a click into a field by a moment,
-/// but that costs nothing: every new live result re-checks the focus until
-/// the phrase starts typing, and each result carries the whole phrase so
-/// far. A browser showing no focused element at all (accessibility tree
-/// still asleep) keeps typing, since nothing can be told there.
-///
-/// Electron apps (Slack, Claude, Cursor) stay exempt: they send typing from
-/// anywhere in the window to their message box, and the logs show dictation
-/// landing there while AX reported the window ("Typing into Claude
-/// (AXWebArea)", "Slack (AXGroup)").
+/// Dictation requires a text destination in every app. Framework names,
+/// selectable text, and generic table/cell roles are not editing permission.
+/// Earlier browser/Electron exemptions let speech trigger page shortcuts;
+/// native table exemptions also let typing reach Finder and Zoom controls.
 public enum KeystrokePolicy {
     static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
-    /// Typing here starts editing (spreadsheet cells).
-    static let typeToEditRoles: Set<String> = ["AXCell", "AXTable", "AXGrid"]
+    /// These controls must not become text inputs merely because AX exposes
+    /// a numeric/bool value, selection, or a spurious insertion point.
+    static let nonTextControls: Set<String> = [
+        "AXButton", "AXCheckBox", "AXRadioButton", "AXSlider", "AXStepper",
+        "AXMenu", "AXMenuItem", "AXMenuBar", "AXToolbar", "AXTabGroup",
+        "AXWindow", "AXApplication", "AXImage", "AXLink",
+        "AXOutline", "AXList", "AXBrowser", "AXRow",
+    ]
 
     /// Apps whose UI is a full browser engine (browsers, Electron). Not CEF
     /// or other embedded web views ("Chromium Embedded Framework", Zoom's
@@ -172,24 +154,21 @@ public enum KeystrokePolicy {
         focusedRole: String?,
         hasTextSelectionRange: Bool,
         hasInsertionPoint: Bool,
-        isEditable: Bool = false
+        isEditable: Bool = false,
+        isEnabled: Bool = true
     ) -> Bool {
-        // Electron: typing anywhere goes to the app's message box.
-        if swallowsUnhandledKeys, !isBrowser { return true }
-        // No focused element: a native app has nowhere to put text; a
-        // browser whose accessibility tree is asleep can't be told apart.
-        guard let role = focusedRole else { return swallowsUnhandledKeys || isBrowser }
-        if textRoles.contains(role) { return true }
-        if isBrowser {
-            // Web content: only text roles or editable content (Gmail's
-            // compose body, a contenteditable editor). A selection range
-            // alone can be read-only page text.
-            return isEditable || hasInsertionPoint
+        // Fail closed when AX cannot identify a destination. A later live
+        // result can retry before any text is inserted.
+        guard isEnabled, let role = focusedRole else { return false }
+        if nonTextControls.contains(role) { return false }
+        if textRoles.contains(role) { return isEditable || hasInsertionPoint }
+        // A table or a selected cell may be a file browser, not a sheet.
+        // Require actual editing evidence instead of assuming type-to-edit.
+        if ["AXCell", "AXTable", "AXGrid", "AXWebArea"].contains(role) {
+            return isEditable
         }
-        if typeToEditRoles.contains(role) { return true }
-        // A whole web page in a native app (Zoom home window): only if the
-        // page itself is editable; a field in it is focused as its own role.
-        if role == "AXWebArea" { return isEditable }
-        return hasTextSelectionRange || hasInsertionPoint || isEditable
+        // Text selections can be read-only. The AX layer validates writable
+        // text rather than treating every settable value as editable text.
+        return isEditable || hasInsertionPoint
     }
 }

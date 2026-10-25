@@ -34,6 +34,8 @@ Voice Control import is optional and lives in Settings. Skip it until basic dict
 
 ## What to try after it is installed
 
+Dictation types only into a focused text input. Zoom meeting views, Finder file lists, and other non-text controls receive no dictated keys. If focus leaves the text field during a phrase, the rest of that phrase is ignored; start a new phrase in the next text field. Explicit commands such as **press return** and **command click** still work outside text fields.
+
 Open TextEdit, click in the window, and speak.
 
 - Dictate a sentence. Text should appear in TextEdit.

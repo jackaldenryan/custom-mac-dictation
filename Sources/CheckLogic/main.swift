@@ -240,9 +240,7 @@ expect(!typistSource.contains("selectBackward"), "never shift-select live phrase
 expect(typistSource.contains("releaseModifiers"), "release stuck modifiers")
 expect(!liveSource.contains("selectBackward"), "live phrase does not shift-select")
 expect(liveSource.contains("hidReplace"), "AX/HID path kept")
-expect(liveSource.contains("hidFallbackAllowed"), "Finder/sidebar never dictated")
 expect(liveSource.contains("commonPrefixKeepCount"), "HID suffix-diff revision")
-expect(liveSource.contains("Typist.typeText"), "HID typing path")
 expect(liveSource.contains("shouldFinishAXMark"), "HID commit does not AX-finish")
 expect(!liveSource.contains("keepsTrailingPunctuation"), "Apple final may drop live trailing punct")
 let engineSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Recognition/SpeechEngine.swift"), encoding: .utf8)
@@ -662,7 +660,7 @@ do {
     expect(swallows([], gmail), "Chrome web apps (Gmail) are Chrome")
     expect(KeystrokePolicy.isBrowser(frameworkNames: [], bundleID: gmail), "Gmail web app is a browser page")
     expect(web("AXGroup", editable: true), "Gmail web app compose body takes dictation")
-    expect(web("AXTextField"), "Gmail web app search box takes dictation")
+    expect(web("AXTextField", editable: true), "Gmail web app search box takes dictation")
     expect(swallows([], "com.microsoft.edgemac.app.abcdef"), "Edge web apps")
     expect(swallows([], "com.brave.Browser.app.abcdef"), "Brave web apps")
     expect(!swallows([], "com.google.Chromecast"), "only real web-app shims")
@@ -677,8 +675,8 @@ do {
     expect(!ok(zoomSwallows, "AXButton"), "Zoom Join/New Meeting button: no keystrokes")
     expect(!ok(zoomSwallows, "AXStaticText"), "Zoom page text: no keystrokes")
     expect(!ok(zoomSwallows, nil), "Zoom with no focused element: no keystrokes")
-    expect(ok(zoomSwallows, "AXTextArea"), "Zoom chat box still gets dictation")
-    expect(ok(zoomSwallows, "AXTextField"), "Zoom search / meeting ID field still gets dictation")
+    expect(ok(zoomSwallows, "AXTextArea", editable: true), "Zoom chat box still gets dictation")
+    expect(ok(zoomSwallows, "AXTextField", editable: true), "Zoom search / meeting ID field still gets dictation")
 
     // Other native apps.
     expect(!ok(false, "AXWindow"), "Zoom meeting window: no keystrokes, no beeps")
@@ -693,13 +691,14 @@ do {
     expect(!ok(false, "unknown"), "focus with no role: no keystrokes")
     expect(!ok(false, "AXWebArea"), "web view in a native app (Mail message, App Store): no keystrokes")
     expect(ok(false, "AXWebArea", editable: true), "editable web document in a native app")
-    expect(ok(false, "AXTextField"), "Finder rename field takes dictation")
-    expect(ok(false, "AXTextArea"), "Notes / Terminal text area")
-    expect(ok(false, "AXSearchField"), "search field")
-    expect(ok(false, "AXComboBox"), "combo box")
-    expect(ok(false, "AXCell"), "spreadsheet cell: typing starts editing")
+    expect(ok(false, "AXTextField", editable: true), "Finder rename field takes dictation")
+    expect(ok(false, "AXTextArea", editable: true), "Notes / Terminal text area")
+    expect(ok(false, "AXSearchField", editable: true), "search field")
+    expect(ok(false, "AXComboBox", editable: true), "combo box")
+    expect(!ok(false, "AXCell"), "cell role alone is not proof of an editable spreadsheet")
+    expect(ok(false, "AXCell", editable: true), "verified editable cell still types")
     expect(ok(false, "AXGroup", ip: true), "custom text view with a caret (terminals)")
-    expect(ok(false, "AXGroup", range: true), "custom text view with a text selection range")
+    expect(!ok(false, "AXGroup", range: true), "a text selection alone can be read-only")
     expect(ok(false, "AXGroup", editable: true), "custom view whose value AX can set")
 
     // Browsers and Electron: page shortcuts (Oct 7). On GitHub with no text
@@ -734,35 +733,23 @@ do {
     expect(!web("AXStaticText", range: true), "read-only page text with a selection: no keystrokes")
     expect(!web("AXGroup", range: true), "read-only group with a selection: no keystrokes")
     // Where text goes, it still types.
-    expect(web("AXTextArea"), "GitHub comment box")
-    expect(web("AXTextField"), "GitHub search / address bar")
-    expect(web("AXSearchField"), "search field")
-    expect(web("AXComboBox"), "autocomplete box")
+    expect(web("AXTextArea", editable: true), "GitHub comment box")
+    expect(web("AXTextField", editable: true), "GitHub search / address bar")
+    expect(web("AXSearchField", editable: true), "search field")
+    expect(web("AXComboBox", editable: true), "autocomplete box")
     expect(web("AXGroup", editable: true), "contenteditable editor (Gmail, Notion)")
     expect(web("AXWebArea", editable: true), "editable document (Google Docs style)")
     expect(web("AXStaticText", editable: true), "caret on text inside an editor")
     expect(web("AXGroup", ip: true), "element showing a caret")
-    expect(web(nil), "browser before its AX tree wakes: can't tell, keeps typing")
-    // Electron apps send typing from anywhere to their message box; the
-    // logs show dictation landing there with AX on the window.
+    expect(!web(nil), "browser with unknown focus waits for a verified destination")
+    // Electron framework presence does not prove a composer is focused.
     let slack = swallows(electron, "com.tinyspeck.slackmacgap")
-    expect(ok(slack, "AXWebArea"), "Claude/Slack window focus: still types (goes to the message box)")
-    expect(ok(slack, "AXGroup"), "Slack message list focus: still types")
-    expect(ok(slack, "AXTextArea"), "Slack composer")
-    // Focus lagging a click into a web field: the phrase is skipped only
-    // until a live result sees the field; each result carries the whole
-    // phrase, so nothing is lost.
-    expect(liveSource.contains("guard !displayed.isEmpty || hidFallbackAllowed() else {"), "focus re-checked on every live result until the phrase types")
+    expect(!ok(slack, "AXWebArea"), "Electron page without editing evidence stays silent")
+    expect(!ok(slack, "AXGroup"), "Slack message list is not a composer")
+    expect(ok(slack, "AXTextArea", editable: true), "Slack composer")
+    // Focus changes, lag, fallback, and per-key validation are exercised
+    // behaviorally by CheckFieldScenarios/FocusSafetyChecks.swift.
 
-    // Every keystroke typing path checks the focus.
-    let typistSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/Typist.swift"), encoding: .utf8)
-    let editorSource = try! String(contentsOf: repo.appendingPathComponent("Sources/CustomDictationKit/Output/FieldEditor.swift"), encoding: .utf8)
-    expect(liveSource.contains("FieldEditor.focusedTakesKeystrokes()"), "live phrases check the focus first")
-    expect(typistSource.contains("checkFocus: Bool = true") && typistSource.contains("FieldEditor.focusedTakesKeystrokes()"),
-           "other typing (paste-text commands) checks the focus by default")
-    expect(editorSource.contains("KeystrokePolicy.swallowsUnhandledKeys("), "keystroke check uses the browser-engine test")
-    expect(!editorSource.contains("isWebEngine: webEngine"), "not the old web-engine test that matched Zoom's CEF helpers")
-    expect(!liveSource.contains("com.apple.finder"), "Finder special case replaced by the general rule")
 }
 
 // Built-in spoken emoji: "<name> emoji" becomes the emoji, alone or
