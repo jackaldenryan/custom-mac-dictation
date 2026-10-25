@@ -10,6 +10,11 @@ binary_name="CustomDictation"
 dist="$root/dist"
 app="$dist/$app_name.app"
 
+# Match check.sh: SwiftUI's macro plugin is supplied by full Xcode, not
+# CommandLineTools. Respect an explicitly selected toolchain.
+if [[ -d /Applications/Xcode.app && -z "${DEVELOPER_DIR:-}" ]]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
 
 swift build -c release --product "$binary_name"
