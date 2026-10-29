@@ -89,8 +89,23 @@ public enum KeystrokePolicy {
         "AXButton", "AXCheckBox", "AXRadioButton", "AXSlider", "AXStepper",
         "AXMenu", "AXMenuItem", "AXMenuBar", "AXToolbar", "AXTabGroup",
         "AXWindow", "AXApplication", "AXImage", "AXLink",
-        "AXOutline", "AXList", "AXBrowser", "AXRow",
+        "AXOutline", "AXList", "AXBrowser", "AXRow", "AXScrollArea",
     ]
+
+    /// A settable AXValue is not, by itself, proof of editable text: macOS
+    /// also exposes it for controls such as scrollers and Finder's Desktop.
+    /// Only known text roles may use that signal. Custom editors must expose
+    /// a settable selected-text attribute or an editable ancestor instead.
+    public static func hasEditableTextEvidence(
+        focusedRole: String,
+        valueSettable: Bool,
+        selectedTextSettable: Bool,
+        hasEditableAncestor: Bool
+    ) -> Bool {
+        selectedTextSettable
+            || hasEditableAncestor
+            || (textRoles.contains(focusedRole) && valueSettable)
+    }
 
     /// Apps whose UI is a full browser engine (browsers, Electron). Not CEF
     /// or other embedded web views ("Chromium Embedded Framework", Zoom's
@@ -144,6 +159,8 @@ public enum KeystrokePolicy {
     /// - swallowsUnhandledKeys: a browser or Electron app.
     /// - isBrowser: a web browser (not Electron).
     /// - focusedRole: nil when AX shows no focused element at all.
+    /// - bundleID: owning app; Finder is fail-closed outside real text roles
+    ///   because its Desktop and file views handle typing as file actions.
     /// - hasTextSelectionRange / hasInsertionPoint: a caret or text selection
     ///   (custom text views such as terminals).
     /// - isEditable: AX says the value can be set, or the element sits in
@@ -151,6 +168,7 @@ public enum KeystrokePolicy {
     public static func allowsTyping(
         swallowsUnhandledKeys: Bool,
         isBrowser: Bool = false,
+        bundleID: String = "",
         focusedRole: String?,
         hasTextSelectionRange: Bool,
         hasInsertionPoint: Bool,
@@ -160,6 +178,7 @@ public enum KeystrokePolicy {
         // Fail closed when AX cannot identify a destination. A later live
         // result can retry before any text is inserted.
         guard isEnabled, let role = focusedRole else { return false }
+        if bundleID == "com.apple.finder", !textRoles.contains(role) { return false }
         if nonTextControls.contains(role) { return false }
         if textRoles.contains(role) { return isEditable || hasInsertionPoint }
         // A table or a selected cell may be a file browser, not a sheet.

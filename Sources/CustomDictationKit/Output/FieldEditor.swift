@@ -152,9 +152,10 @@ public enum FieldEditor {
             frameworkNames: frameworkNames(app),
             bundleID: app?.bundleIdentifier ?? ""
         )
+        let bundleID = app?.bundleIdentifier ?? ""
         guard let el else {
             let allowed = KeystrokePolicy.allowsTyping(
-                swallowsUnhandledKeys: swallows, isBrowser: browser, focusedRole: nil,
+                swallowsUnhandledKeys: swallows, isBrowser: browser, bundleID: bundleID, focusedRole: nil,
                 hasTextSelectionRange: false, hasInsertionPoint: false
             )
             return (allowed, "no focused element", appName)
@@ -165,13 +166,17 @@ public enum FieldEditor {
             ? (caret as? NSNumber)?.intValue : nil
         let hasCaret = KeystrokePolicy.isCaret(lineNumber: caretLine)
         var editableAncestor: CFTypeRef?
-        // Checkboxes/sliders also have settable AXValue, but it is not text.
         let valueSettable = isSettable(el, kAXValueAttribute as CFString)
             && stringValue(el, kAXValueAttribute as CFString) != nil
         let selectedTextSettable = isSettable(el, kAXSelectedTextAttribute as CFString)
         let hasEditableAncestor = AXUIElementCopyAttributeValue(el, "AXEditableAncestor" as CFString, &editableAncestor) == .success
             && editableAncestor.map { CFGetTypeID($0) == AXUIElementGetTypeID() } == true
-        let editable = valueSettable || selectedTextSettable || hasEditableAncestor
+        let editable = KeystrokePolicy.hasEditableTextEvidence(
+            focusedRole: role,
+            valueSettable: valueSettable,
+            selectedTextSettable: selectedTextSettable,
+            hasEditableAncestor: hasEditableAncestor
+        )
         var enabledValue: CFTypeRef?
         let isEnabled = AXUIElementCopyAttributeValue(el, kAXEnabledAttribute as CFString, &enabledValue) != .success
             || (enabledValue as? NSNumber)?.boolValue != false
@@ -179,6 +184,7 @@ public enum FieldEditor {
         let allowed = KeystrokePolicy.allowsTyping(
             swallowsUnhandledKeys: swallows,
             isBrowser: browser,
+            bundleID: bundleID,
             focusedRole: role,
             hasTextSelectionRange: range != nil,
             hasInsertionPoint: hasCaret,

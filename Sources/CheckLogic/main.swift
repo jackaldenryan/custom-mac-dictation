@@ -624,8 +624,12 @@ do {
 // (browsers, Electron) are exempt now; everything else needs a focus that
 // takes text.
 do {
-    func ok(_ swallows: Bool, _ role: String?, range: Bool = false, ip: Bool = false, editable: Bool = false, browser: Bool = false) -> Bool {
-        KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: swallows, isBrowser: browser, focusedRole: role, hasTextSelectionRange: range, hasInsertionPoint: ip, isEditable: editable)
+    func ok(_ swallows: Bool, _ role: String?, range: Bool = false, ip: Bool = false,
+            editable: Bool = false, browser: Bool = false, bundleID: String = "") -> Bool {
+        KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: swallows, isBrowser: browser,
+                                     bundleID: bundleID, focusedRole: role,
+                                     hasTextSelectionRange: range, hasInsertionPoint: ip,
+                                     isEditable: editable)
     }
     func web(_ role: String?, range: Bool = false, ip: Bool = false, editable: Bool = false) -> Bool {
         ok(true, role, range: range, ip: ip, editable: editable, browser: true)
@@ -686,6 +690,7 @@ do {
     expect(!ok(false, "AXList"), "native list: no keystrokes")
     expect(!ok(false, "AXImage"), "image view: no keystrokes")
     expect(!ok(false, "AXScrollArea"), "scroll area: no keystrokes")
+    expect(!ok(false, "AXScrollArea", editable: true), "settable scroll value is not editable text")
     expect(!ok(false, "AXApplication"), "app with no window: no keystrokes")
     expect(!ok(false, nil), "native app, AX sees no focus: no keystrokes")
     expect(!ok(false, "unknown"), "focus with no role: no keystrokes")
@@ -700,6 +705,20 @@ do {
     expect(ok(false, "AXGroup", ip: true), "custom text view with a caret (terminals)")
     expect(!ok(false, "AXGroup", range: true), "a text selection alone can be read-only")
     expect(ok(false, "AXGroup", editable: true), "custom view whose value AX can set")
+    expect(!ok(false, "AXGroup", editable: true, bundleID: "com.apple.finder"),
+           "Finder Desktop group stays silent even with misleading editability")
+    expect(!ok(false, "AXScrollArea", editable: true, bundleID: "com.apple.finder"),
+           "Finder Desktop scroll area stays silent")
+    expect(ok(false, "AXTextField", editable: true, bundleID: "com.apple.finder"),
+           "Finder rename remains editable")
+    expect(!KeystrokePolicy.hasEditableTextEvidence(
+        focusedRole: "AXGroup", valueSettable: true,
+        selectedTextSettable: false, hasEditableAncestor: false
+    ), "generic settable AXValue is not enough")
+    expect(KeystrokePolicy.hasEditableTextEvidence(
+        focusedRole: "AXTextField", valueSettable: true,
+        selectedTextSettable: false, hasEditableAncestor: false
+    ), "text field settable AXValue is editing evidence")
 
     // Browsers and Electron: page shortcuts (Oct 7). On GitHub with no text
     // box focused, "test" typed "t" and opened the file finder. The log's

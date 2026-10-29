@@ -14,6 +14,8 @@ Typing is Accessibility in native fields, keyboard events everywhere else. An In
 
 Dictation requires a verified text destination in every app. `LivePhrase` binds a phrase to the focused process and AX element, stops on focus loss, and ignores the rest of that phrase until its boundary. Never bypass this check for corrections, discard, or AX-to-HID fallback. `DictationKeyWriter` rechecks before each chunk/backspace; dictation events address the original process. Explicit voice key/click commands still use their separate command path. Framework names, a generic table/cell role, or a read-only selection are not permission to type. `CheckFieldScenarios/FocusSafetyChecks.swift` exercises the production phrase state machine and key emitter through `DictationOutput`, including focus switches and fallback failures; keep these behavioral checks instead of source-string assertions.
 
+A settable `AXValue` is generic control state, not proof of editable text (Finder's Desktop and scrollers expose it). It counts only for known text roles. Finder is fail-closed outside its real text fields so Desktop/file-view typing can never select or open items.
+
 Enable **Custom Dictation Local** in System Settings → Privacy & Security → Accessibility (and Microphone). It is a different app from Custom Dictation. If it is not in the list, click + and choose it from Applications.
 
 Quit the released Custom Dictation app, or stop listening on it, so only the local app uses the microphone. First local launch may show onboarding.

@@ -10,9 +10,10 @@ func focusExpect(_ condition: Bool, _ message: String) {
 
 func runFocusSafetyChecks() {
     func allows(_ role: String?, range: Bool = false, editable: Bool = false,
-                caret: Bool = false, browser: Bool = false, electron: Bool = false) -> Bool {
+                caret: Bool = false, browser: Bool = false, electron: Bool = false,
+                bundleID: String = "") -> Bool {
         KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: browser || electron,
-                                    isBrowser: browser, focusedRole: role,
+                                    isBrowser: browser, bundleID: bundleID, focusedRole: role,
                                     hasTextSelectionRange: range,
                                     hasInsertionPoint: caret, isEditable: editable)
     }
@@ -23,6 +24,11 @@ func runFocusSafetyChecks() {
     }
     focusExpect(!allows(nil, browser: true), "missing browser focus must not send page shortcuts")
     focusExpect(!allows("AXGroup", electron: true), "Electron framework is not proof of a text destination")
+    focusExpect(!allows("AXScrollArea", editable: true), "a settable Desktop scroll area is not editable text")
+    focusExpect(!allows("AXGroup", editable: true, bundleID: "com.apple.finder"),
+                "Finder Desktop container is never a text destination")
+    focusExpect(!allows("AXImage", editable: true, caret: true, bundleID: "com.apple.finder"),
+                "Finder Desktop icon rejects misleading editing signals")
     for role in ["AXTextField", "AXTextArea", "AXSearchField", "AXComboBox"] {
         focusExpect(allows(role, editable: true), "editable \(role) still accepts dictation")
         focusExpect(allows(role, caret: true), "custom \(role) with a caret still accepts dictation")
@@ -30,6 +36,26 @@ func runFocusSafetyChecks() {
     }
     focusExpect(allows("AXGroup", editable: true, browser: true), "editable browser content still types")
     focusExpect(allows("AXTextArea", editable: true, electron: true), "Electron composer still types")
+    focusExpect(allows("AXTextField", editable: true, bundleID: "com.apple.finder"),
+                "Finder rename field still accepts dictation")
+    focusExpect(allows("AXSearchField", editable: true, bundleID: "com.apple.finder"),
+                "Finder search field still accepts dictation")
+    focusExpect(!KeystrokePolicy.hasEditableTextEvidence(
+        focusedRole: "AXGroup", valueSettable: true,
+        selectedTextSettable: false, hasEditableAncestor: false
+    ), "generic settable AXValue is not text editing evidence")
+    focusExpect(!KeystrokePolicy.hasEditableTextEvidence(
+        focusedRole: "AXScrollArea", valueSettable: true,
+        selectedTextSettable: false, hasEditableAncestor: false
+    ), "settable scroll value is not text editing evidence")
+    focusExpect(KeystrokePolicy.hasEditableTextEvidence(
+        focusedRole: "AXTextField", valueSettable: true,
+        selectedTextSettable: false, hasEditableAncestor: false
+    ), "known text field may use a settable string value")
+    focusExpect(KeystrokePolicy.hasEditableTextEvidence(
+        focusedRole: "AXGroup", valueSettable: false,
+        selectedTextSettable: false, hasEditableAncestor: true
+    ), "contenteditable custom view keeps its editable-ancestor signal")
     focusExpect(!KeystrokePolicy.allowsTyping(swallowsUnhandledKeys: false,
         focusedRole: "AXTextField", hasTextSelectionRange: true,
         hasInsertionPoint: true, isEditable: true, isEnabled: false), "disabled text input stays silent")
